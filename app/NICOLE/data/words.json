@@ -1,0 +1,210 @@
+{
+  "A": [
+    {
+      "word": "Apple",
+      "image": "https://images.unsplash.com/photo-1669999207738-fcdb7103a6f3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxyZWQlMjBhcHBsZSUyMGZydWl0fGVufDF8fHx8MTc3MDU1Nzg1MHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The apple is red.",
+      "audio": null
+    }
+  ],
+  "B": [
+    {
+      "word": "Ball",
+      "image": "https://images.unsplash.com/photo-1632519014462-ac1f6ea2cffb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb2xvcmZ1bCUyMGJhbGwlMjB0b3l8ZW58MXx8fHwxNzcwNTQ5NTc3fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The ball bounces.",
+      "audio": null
+    }
+  ],
+  "C": [
+    {
+      "word": "Cat",
+      "image": "https://images.unsplash.com/photo-1707363529368-6674ce4312a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvcmFuZ2UlMjBjYXQlMjBwZXR8ZW58MXx8fHwxNzcwNjA0OTUyfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The cat is soft.",
+      "audio": null
+    }
+  ],
+  "D": [
+    {
+      "word": "Dog",
+      "image": "https://images.unsplash.com/photo-1626495171228-9b1fca1ec1ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxicm93biUyMGRvZyUyMHBldHxlbnwxfHx8fDE3NzA2MDQ5NTN8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The dog plays.",
+      "audio": null
+    }
+  ],
+  "E": [
+    {
+      "word": "Elephant",
+      "image": "https://images.unsplash.com/photo-1707759408966-9edefa17ac6e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxlbGVwaGFudCUyMGFuaW1hbHxlbnwxfHx8fDE3NzA1NDk3MTZ8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The elephant is big.",
+      "audio": null
+    }
+  ],
+  "F": [
+    {
+      "word": "Fish",
+      "image": "https://images.unsplash.com/photo-1579969910678-c2e7bf2e8936?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx5ZWxsb3clMjBmaXNofGVufDF8fHx8MTc3MDYwNDk1M3ww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The fish swims.",
+      "audio": null
+    }
+  ],
+  "G": [
+    {
+      "word": "Garden",
+      "image": "https://images.unsplash.com/photo-1559150182-a7144f7628f9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnYXJkZW4lMjBmbG93ZXJzfGVufDF8fHx8MTc3MDYwNDk1NHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The garden has flowers.",
+      "audio": null
+    }
+  ],
+  "H": [
+    {
+      "word": "House",
+      "image": "https://images.unsplash.com/photo-1671104695360-2f3f68066748?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxob3VzZSUyMGhvbWUlMjBleHRlcmlvcnxlbnwxfHx8fDE3NzA0ODc1NDR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "I live in a house.",
+      "audio": null
+    }
+  ],
+  "I": [
+    {
+      "word": "Ice Cream",
+      "image": "https://images.unsplash.com/photo-1559703248-dcaaec9fab78?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpY2UlMjBjcmVhbSUyMGNvbmV8ZW58MXx8fHwxNzcwNTY4NTA4fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "Ice cream is cold.",
+      "audio": null
+    }
+  ],
+  "J": [
+    {
+      "word": "Jar",
+      "image": "https://images.unsplash.com/photo-1622428051717-dcd8412959de?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnbGFzcyUyMGphcnxlbnwxfHx8fDE3NzA2MDQ5NTV8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The jar is clear.",
+      "audio": null
+    }
+  ],
+  "K": [
+    {
+      "word": "Kite",
+      "image": "https://images.unsplash.com/photo-1649153512379-c86b9d06739d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraXRlJTIwZmx5aW5nJTIwc2t5fGVufDF8fHx8MTc3MDYwNDk1Nnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The kite flies high.",
+      "audio": null
+    }
+  ],
+  "L": [
+    {
+      "word": "Leaf",
+      "image": "https://images.unsplash.com/photo-1710596220294-3f88dfe02fd8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmVlbiUyMGxlYWYlMjBwbGFudHxlbnwxfHx8fDE3NzA2MDQ5NTZ8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The leaf is green.",
+      "audio": null
+    }
+  ],
+  "M": [
+    {
+      "word": "Moon",
+      "image": "https://images.unsplash.com/photo-1697906492115-1870df04bda4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmdWxsJTIwbW9vbiUyMG5pZ2h0fGVufDF8fHx8MTc3MDYwNDk1Nnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The moon shines at night.",
+      "audio": null
+    }
+  ],
+  "N": [
+    {
+      "word": "Nest",
+      "image": "https://images.unsplash.com/photo-1597522184044-ba1ea1489408?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxiaXJkJTIwbmVzdCUyMGVnZ3N8ZW58MXx8fHwxNzcwNjA0OTU3fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "Birds live in a nest.",
+      "audio": null
+    }
+  ],
+  "O": [
+    {
+      "word": "Orange",
+      "image": "https://images.unsplash.com/photo-1615147438600-2ef96072abd5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvcmFuZ2UlMjBmcnVpdCUyMGNpdHJ1c3xlbnwxfHx8fDE3NzA2MDQ5NTd8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The orange is juicy.",
+      "audio": null
+    }
+  ],
+  "P": [
+    {
+      "word": "Pig",
+      "image": "https://images.unsplash.com/photo-1546106705-b84c814cffde?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwaW5rJTIwcGlnJTIwZmFybXxlbnwxfHx8fDE3NzA2MDQ5NTd8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The pig is pink.",
+      "audio": null
+    }
+  ],
+  "Q": [
+    {
+      "word": "Queen",
+      "image": "https://images.unsplash.com/photo-1541554685626-8016b713c293?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxxdWVlbiUyMGNyb3duJTIwcm95YWx8ZW58MXx8fHwxNzcwNTg1Nzc5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The queen wears a crown.",
+      "audio": null
+    }
+  ],
+  "R": [
+    {
+      "word": "Rainbow",
+      "image": "https://images.unsplash.com/photo-1626208800032-f1d513b65c6c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxyYWluYm93JTIwY29sb3JmdWwlMjBza3l8ZW58MXx8fHwxNzcwNTM1NzA2fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The rainbow has colors.",
+      "audio": null
+    }
+  ],
+  "S": [
+    {
+      "word": "Sun",
+      "image": "https://images.unsplash.com/photo-1721849282256-8e2b66f03f4e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxicmlnaHQlMjBzdW4lMjBzdW5zaGluZXxlbnwxfHx8fDE3NzA2MDQ5NTl8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The sun is bright.",
+      "audio": null
+    }
+  ],
+  "T": [
+    {
+      "word": "Tree",
+      "image": "https://images.unsplash.com/photo-1641975156937-9ed56d1a426f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0cmVlJTIwbmF0dXJlJTIwZm9yZXN0fGVufDF8fHx8MTc3MDYwNDk1OXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The tree is tall.",
+      "audio": null
+    }
+  ],
+  "U": [
+    {
+      "word": "Umbrella",
+      "image": "https://images.unsplash.com/photo-1648464679442-a627f7e3f82a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibHVlJTIwdW1icmVsbGElMjByYWlufGVufDF8fHx8MTc3MDYwNDk1OXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The umbrella keeps me dry.",
+      "audio": null
+    }
+  ],
+  "V": [
+    {
+      "word": "Vase",
+      "image": "https://images.unsplash.com/photo-1647043527521-670ae68958b0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmbG93ZXIlMjB2YXNlJTIwdGFibGV8ZW58MXx8fHwxNzcwNjA0OTYwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The vase holds flowers.",
+      "audio": null
+    }
+  ],
+  "W": [
+    {
+      "word": "Water",
+      "image": "https://images.unsplash.com/photo-1560614685-a933167870d8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvY2VhbiUyMHdhdmVzJTIwd2F0ZXJ8ZW58MXx8fHwxNzcwNTgxNTY0fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "Water is clear.",
+      "audio": null
+    }
+  ],
+  "X": [
+    {
+      "word": "Xylophone",
+      "image": "https://images.unsplash.com/photo-1710651648270-c0c900f49f30?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHh4eWxvcGhvbmUlMjBtdXNpY2FsJTIwaW5zdHJ1bWVudHxlbnwxfHx8fDE3NzA2MDQ5NjB8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The xylophone makes music.",
+      "audio": null
+    }
+  ],
+  "Y": [
+    {
+      "word": "Yarn",
+      "image": "https://images.unsplash.com/photo-1616168055880-27a485459795?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx5ZWxsb3clMjB5YXJuJTIwa25pdHRpbmd8ZW58MXx8fHwxNzcwNjA0OTYxfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "Yarn is soft.",
+      "audio": null
+    }
+  ],
+  "Z": [
+    {
+      "word": "Zebra",
+      "image": "https://images.unsplash.com/photo-1678196997640-68a0ce405c5f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx6ZWJyYSUyMHN0cmlwZXMlMjBhbmltYWx8ZW58MXx8fHwxNzcwNjA0OTYxfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
+      "sentence": "The zebra has stripes.",
+      "audio": null
+    }
+  ]
+}
