@@ -109,7 +109,7 @@ export function Hero() {
                 <Github size={28} />
               </motion.a>
               <motion.a
-                href="https://linkedin.com/thieu-le"
+                href="https://linkedin.com/in/thieu-le"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-red-500 transition-colors"
