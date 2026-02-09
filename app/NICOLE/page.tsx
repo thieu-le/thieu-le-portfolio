@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { AlphabetGrid } from "./components/AlphabetGrid";
 import { LetterDetail } from "./components/LetterDetail";
-import { Tracing } from "./components/Tracing";
+import { LetterTracing } from "./components/LetterTracing";
+import { WordTracing } from "./components/WordTracing";
 import { Sentence } from "./components/Sentence";
 import wordsData from "./data/words.json";
 
-type Screen = "grid" | "letter" | "tracing" | "sentence";
+type Screen = "grid" | "letter" | "letterTracing" | "wordTracing" | "sentence";
 
 export default function NicolePage() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("grid");
@@ -28,8 +29,12 @@ export default function NicolePage() {
     setSelectedLetter(null);
   };
 
-  const handleGoToTracing = () => {
-    setCurrentScreen("tracing");
+  const handleGoToLetterTracing = () => {
+    setCurrentScreen("letterTracing");
+  };
+
+  const handleGoToWordTracing = () => {
+    setCurrentScreen("wordTracing");
   };
 
   const handleGoToSentence = () => {
@@ -60,16 +65,23 @@ export default function NicolePage() {
           letter={selectedLetter}
           word={getCurrentWord()}
           onBack={handleBackToGrid}
-          onTracing={handleGoToTracing}
+          onTracing={handleGoToLetterTracing}
         />
       )}
 
-      {currentScreen === "tracing" && selectedLetter && getCurrentWord() && (
-        <Tracing
+      {currentScreen === "letterTracing" && selectedLetter && (
+        <LetterTracing
           letter={selectedLetter}
-          word={getCurrentWord()!.word}
           onBack={handleBackToLetter}
-          onContinueToSentence={handleGoToSentence}
+          onContinue={handleGoToWordTracing}
+        />
+      )}
+
+      {currentScreen === "wordTracing" && selectedLetter && getCurrentWord() && (
+        <WordTracing
+          word={getCurrentWord()!.word}
+          onBack={() => setCurrentScreen("letterTracing")}
+          onContinue={handleGoToSentence}
         />
       )}
 

@@ -24,7 +24,8 @@ export function LetterDetail({
   onBack,
   onTracing,
 }: LetterDetailProps) {
-  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [wordAudioPlaying, setWordAudioPlaying] = useState(false);
+  const [letterAudioPlaying, setLetterAudioPlaying] = useState(false);
 
   if (!word) {
     return (
@@ -42,14 +43,31 @@ export function LetterDetail({
     );
   }
 
-  // Simple text-to-speech function (user must click to activate)
-  const handlePlayAudio = () => {
+  // Simple text-to-speech function for letter (user must click to activate)
+  const handlePlayLetter = () => {
     if ("speechSynthesis" in window) {
-      setAudioPlaying(true);
+      // Stop any current speech
+      window.speechSynthesis.cancel();
+      setLetterAudioPlaying(true);
+      // Use lowercase to avoid "Capital" prefix, or use the letter name directly
+      const utterance = new SpeechSynthesisUtterance(letter.toLowerCase());
+      utterance.rate = 0.7; // Slower for letter pronunciation
+      utterance.pitch = 1.0;
+      utterance.onend = () => setLetterAudioPlaying(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // Simple text-to-speech function for word (user must click to activate)
+  const handlePlayWord = () => {
+    if ("speechSynthesis" in window) {
+      // Stop any current speech
+      window.speechSynthesis.cancel();
+      setWordAudioPlaying(true);
       const utterance = new SpeechSynthesisUtterance(word.word);
       utterance.rate = 0.8; // Slower, calmer speech
       utterance.pitch = 1.0;
-      utterance.onend = () => setAudioPlaying(false);
+      utterance.onend = () => setWordAudioPlaying(false);
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -72,7 +90,26 @@ export function LetterDetail({
         {/* Letter display */}
         <div className="bg-white rounded-3xl p-12 mb-8 text-center shadow-sm">
           <div className="text-9xl mb-4 text-[#2C3E50]">{letter}</div>
-          <div className="text-3xl text-[#666] mb-2">{letter.toLowerCase()}</div>
+          <div className="text-3xl text-[#666] mb-4">{letter.toLowerCase()}</div>
+          {/* Letter audio button */}
+          <button
+            onClick={handlePlayLetter}
+            disabled={letterAudioPlaying || wordAudioPlaying}
+            className={`
+              px-6 py-3 rounded-xl flex items-center gap-2 text-lg mx-auto
+              transition-all duration-300
+              ${
+                letterAudioPlaying || wordAudioPlaying
+                  ? "bg-[#E0E0E0] text-[#999] cursor-not-allowed"
+                  : "bg-[#E8F5E9] text-[#388E3C] hover:bg-[#81C784] hover:text-white"
+              }
+              focus:outline-none focus:ring-4 focus:ring-[#81C784] focus:ring-opacity-50
+            `}
+            aria-label="Listen to letter"
+          >
+            <Volume2 className="w-5 h-5" />
+            {letterAudioPlaying ? "Playing..." : "Sound Out Letter"}
+          </button>
         </div>
 
         {/* Word and Image */}
@@ -92,15 +129,15 @@ export function LetterDetail({
               {word.word}
             </div>
 
-            {/* Audio button */}
+            {/* Word audio button */}
             <button
-              onClick={handlePlayAudio}
-              disabled={audioPlaying}
+              onClick={handlePlayWord}
+              disabled={wordAudioPlaying || letterAudioPlaying}
               className={`
                 px-8 py-4 rounded-xl flex items-center gap-3 text-xl
                 transition-all duration-300
                 ${
-                  audioPlaying
+                  wordAudioPlaying || letterAudioPlaying
                     ? "bg-[#E0E0E0] text-[#999] cursor-not-allowed"
                     : "bg-[#E8F5E9] text-[#388E3C] hover:bg-[#81C784] hover:text-white"
                 }
@@ -109,7 +146,7 @@ export function LetterDetail({
               aria-label="Listen to word"
             >
               <Volume2 className="w-6 h-6" />
-              {audioPlaying ? "Playing..." : "Listen"}
+              {wordAudioPlaying ? "Playing..." : "Listen to Word"}
             </button>
 
             {/* Continue button */}
@@ -120,7 +157,7 @@ export function LetterDetail({
                          focus:outline-none focus:ring-4 focus:ring-[#81C784] focus:ring-opacity-50"
               aria-label="Practice tracing"
             >
-              Practice Tracing
+              Practice Tracing Letter
             </button>
           </div>
         </div>

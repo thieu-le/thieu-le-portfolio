@@ -40,7 +40,7 @@ export function Contact() {
 
       setSubmitStatus({
         type: "success",
-        message: "Thank you for your message! I&apos;ll get back to you soon.",
+        message: "Thank you for your message! I'll get back to you soon.",
       });
       setFormData({ name: "", email: "", message: "" });
     } catch (error) {

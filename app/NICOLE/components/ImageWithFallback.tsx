@@ -28,12 +28,15 @@ export function ImageWithFallback({
 
   // Handle both local and external URLs
   if (src.startsWith("http")) {
+    // For external URLs, use Next.js Image with unoptimized flag
     return (
-      <img
+      <Image
         src={src}
         alt={alt}
+        fill
         className={className}
         onError={() => setImgError(true)}
+        unoptimized
       />
     );
   }

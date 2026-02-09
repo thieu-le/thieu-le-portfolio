@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Send email using Resend
-    const { data, error } = await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: "Portfolio Contact Form <onboarding@resend.dev>", // Update this with your verified domain
       to: [process.env.CONTACT_EMAIL],
       replyTo: email,

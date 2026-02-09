@@ -45,7 +45,7 @@ export function About() {
             animate={isInView ? { opacity: 1 } : {}}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
-            I'm a passionate software engineer with expertise in building modern web applications.
+            I&apos;m a passionate software engineer with expertise in building modern web applications.
             With a strong foundation in both frontend and backend technologies, I love turning ideas
             into reality through elegant code and intuitive user experiences.
           </motion.p>
