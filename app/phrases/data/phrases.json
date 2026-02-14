@@ -1,0 +1,26 @@
+[
+  {
+    "id": "hungry",
+    "phrase": "I am hungry",
+    "realWorldPrompt": "Try saying this when you're hungry",
+    "image": "/phrases/hungry.png"
+  },
+  {
+    "id": "restroom",
+    "phrase": "I need to use the restroom",
+    "realWorldPrompt": "Try saying this when you need to go",
+    "image": "https://globalsymbols.com/uploads/production/image/imagefile/6247/14_6247_67c8be03-7fe0-488d-b2f9-8ed69a7f1497.svg"
+  },
+  {
+    "id": "sorry",
+    "phrase": "I'm sorry",
+    "realWorldPrompt": "Try saying this when you make a mistake",
+    "image": "/phrases/sorry.png"
+  },
+  {
+    "id": "please",
+    "phrase": "May I have some please",
+    "realWorldPrompt": "Try saying this when you want something",
+    "image": "/phrases/please.png"
+  }
+]
