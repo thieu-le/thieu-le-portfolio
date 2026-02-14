@@ -17,7 +17,7 @@ export function AlphabetGrid({
     <div className="min-h-screen bg-[#F0F7FF] p-8">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-4xl text-center mb-12 text-[#2C3E50]">
-          Learn the Alphabet
+          Hi Nicole!
         </h1>
 
         <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-4">
