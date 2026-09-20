@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { ArrowDown, Github, Linkedin, Mail } from "lucide-react";
-import { features } from "../config/features";
 
 export function Hero() {
   const handleSmoothScroll = (
@@ -69,18 +68,13 @@ export function Hero() {
               transition={{ duration: 0.5, delay: 0.8 }}
             >
               <motion.a
-                href={features.showProjects ? "#projects" : "#resume"}
+                href="#resume"
                 className="px-8 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors cursor-pointer"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={(e) =>
-                  handleSmoothScroll(
-                    e,
-                    features.showProjects ? "#projects" : "#resume",
-                  )
-                }
+                onClick={(e) => handleSmoothScroll(e, "#resume")}
               >
-                {features.showProjects ? "View My Work" : "View Resume"}
+                View Resume
               </motion.a>
               <motion.a
                 href="#contact"

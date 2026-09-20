@@ -87,8 +87,10 @@ Resend. It needs one environment variable:
 RESEND_API_KEY=re_...
 ```
 
-Without the key the route fails closed and the form surfaces an error state — the
-rest of the site runs fine. Full walkthrough in [`CONTACT_FORM_SETUP.md`](CONTACT_FORM_SETUP.md).
+The key is required at build time, not just at request time — the Resend client is
+constructed at module scope, so `npm run build` fails without it. Set it in
+`.env.local` locally and in your Vercel project settings for deploys. Full
+walkthrough in [`CONTACT_FORM_SETUP.md`](CONTACT_FORM_SETUP.md).
 
 ## Project layout
 

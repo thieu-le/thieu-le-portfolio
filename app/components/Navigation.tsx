@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
-import { features } from "../config/features";
 
 export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -49,10 +48,7 @@ export function Navigation() {
     { name: "Home", href: "#" },
     { name: "About", href: "#about" },
     { name: "Skills", href: "#skills" },
-    { 
-      name: features.showProjects ? "Projects" : "Resume", 
-      href: features.showProjects ? "#projects" : "#resume" 
-    },
+    { name: "Resume", href: "#resume" },
     { name: "Contact", href: "#contact" }
   ];
 
