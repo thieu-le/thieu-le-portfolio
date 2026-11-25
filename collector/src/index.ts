@@ -100,6 +100,7 @@ async function storeMainGames(
   known = new Map<string, Match>(),
 ): Promise<number> {
   const rows: GameRow[] = [];
+  let stored = 0;
   for (const id of matchIds) {
     if (!hasTime()) break;
     const match = known.get(id) ?? (await fetchMatch(platform, id));
@@ -107,10 +108,13 @@ async function storeMainGames(
     const row = await buildRow(platform, match, puuid, items);
     if (row) rows.push(row);
     // Write in chunks so a run cut short keeps what it paid for.
-    if (rows.length >= 25) await upsert('otp_games', rows.splice(0));
+    if (rows.length >= 25) {
+      stored += rows.length;
+      await upsert('otp_games', rows.splice(0));
+    }
   }
   await upsert('otp_games', rows);
-  return rows.length;
+  return stored + rows.length;
 }
 
 // ---- Platform lane ----
