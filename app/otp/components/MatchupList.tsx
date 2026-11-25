@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { Search, X } from "lucide-react";
+import { Rate, signed } from "./StatDisplay";
 
 export type MatchupRow = {
   slug: string;
@@ -25,16 +27,12 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: "easiest", label: "Easiest" },
 ];
 
-function signed(n: number | null) {
-  if (n === null) return "–";
-  return `${n > 0 ? "+" : ""}${n.toLocaleString()}`;
-}
+function showMatchup() {
+  const panel = document.getElementById("matchup-detail");
+  if (!panel) return;
 
-function rateClass(rate: number | null, games: number, minGames: number) {
-  if (rate === null || games < minGames) return "text-zinc-500";
-  if (rate >= 52) return "text-emerald-400";
-  if (rate <= 48) return "text-rose-400";
-  return "text-zinc-200";
+  panel.focus({ preventScroll: true });
+  panel.scrollIntoView({ block: "start" });
 }
 
 export default function MatchupList({
@@ -50,102 +48,107 @@ export default function MatchupList({
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("games");
+  const pendingMobileMatchup = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selected && pendingMobileMatchup.current === selected) {
+      pendingMobileMatchup.current = null;
+      showMatchup();
+    }
+  }, [selected]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = rows.filter((r) => !q || r.name.toLowerCase().includes(q));
+    const list = rows.filter((r) => r.name.toLowerCase().includes(q));
     if (sort === "games") return list.sort((a, b) => b.games - a.games);
     const dir = sort === "hardest" ? 1 : -1;
     return list.sort((a, b) => dir * (a.adjustedWinRate - b.adjustedWinRate));
   }, [rows, query, sort]);
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Find an opponent"
-          aria-label="Find an opponent"
-          className="w-full sm:w-60 rounded-md bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm outline-none focus:border-amber-400"
-        />
-        <div className="flex gap-1 text-sm" role="group" aria-label="Sort matchups">
+    <div className="otp-panel overflow-hidden">
+      <div className="otp-table-toolbar">
+        <div className="otp-search">
+          <Search size={17} aria-hidden />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find an opponent" aria-label="Find an opponent" />
+          {query && <button type="button" aria-label="Clear opponent search" onClick={() => setQuery("")}><X size={16} aria-hidden /></button>}
+        </div>
+        <div className="otp-sort-options" role="group" aria-label="Sort matchups">
           {SORTS.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setSort(s.key)}
-              aria-pressed={sort === s.key}
-              className={`rounded-md px-3 py-1.5 border ${
-                sort === s.key
-                  ? "border-amber-400 text-amber-300"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
+            <button key={s.key} type="button" onClick={() => setSort(s.key)} aria-pressed={sort === s.key}>
               {s.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-zinc-800 max-h-[32rem] overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-900 text-zinc-400 sticky top-0">
+      <div className="max-h-[32rem] overflow-auto" role="region" aria-label="Opponent statistics" tabIndex={0}>
+        <table className="otp-table">
+          <thead className="sticky top-0 z-10">
             <tr>
-              <th className="px-3 py-2 text-left font-medium">vs</th>
-              <th className="px-3 py-2 text-right font-medium">Games</th>
-              <th className="px-3 py-2 text-right font-medium">Game WR</th>
-              <th className="px-3 py-2 text-right font-medium">Lane WR</th>
-              <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">Gold @15</th>
-              <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">XP @15</th>
+              <th scope="col">Opponent</th>
+              <th scope="col">Games</th>
+              <th scope="col">Game WR</th>
+              <th scope="col">Lane WR</th>
+              <th scope="col" className="hidden sm:table-cell">Gold @15</th>
+              <th scope="col" className="hidden sm:table-cell">XP @15</th>
             </tr>
           </thead>
           <tbody>
             {shown.map((r) => {
               const active = r.slug === selected;
+              const smallSample = r.games < minGames;
               return (
-                <tr
-                  key={r.slug}
-                  className={`border-t border-zinc-800 ${active ? "bg-amber-400/10" : "hover:bg-zinc-900/60"}`}
-                >
-                  <td className="px-3 py-2">
+                <tr key={r.slug} className="otp-link-row" data-selected={active}>
+                  <th scope="row">
                     <Link
                       href={`${baseHref}?vs=${r.slug}#matchup`}
+                      prefetch={false}
                       scroll={false}
                       aria-current={active ? "true" : undefined}
-                      className="flex items-center gap-2"
+                      onNavigate={() => {
+                        if (!window.matchMedia("(width < 70rem)").matches) {
+                          pendingMobileMatchup.current = null;
+                        } else if (active) {
+                          showMatchup();
+                        } else {
+                          pendingMobileMatchup.current = r.slug;
+                        }
+                      }}
+                      className="otp-row-link"
                     >
-                      <Image src={r.icon} alt="" width={28} height={28} unoptimized className="rounded" />
-                      <span className={active ? "text-amber-300 font-medium" : "font-medium"}>{r.name}</span>
+                      <Image src={r.icon} alt="" width={30} height={30} unoptimized className="otp-portrait" />
+                      <span>{r.name}</span>
                     </Link>
+                  </th>
+                  <td>
+                    {r.games.toLocaleString()}
+                    {smallSample && <span title="Small sample">*</span>}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {r.games}
-                    {r.games < minGames && <span className="ml-1 text-xs text-zinc-500" title="Small sample">*</span>}
-                  </td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${rateClass(r.winRate, r.games, minGames)}`}>
-                    {r.winRate.toFixed(1)}%
-                  </td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${rateClass(r.laneWinRate, r.games, minGames)}`}>
-                    {r.laneWinRate === null ? "–" : `${r.laneWinRate.toFixed(1)}%`}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">{signed(r.goldDiff15)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">{signed(r.xpDiff15)}</td>
+                  <td><Rate value={r.winRate} muted={smallSample} /></td>
+                  <td><Rate value={r.laneWinRate} muted={smallSample} /></td>
+                  <td className="hidden sm:table-cell">{signed(r.goldDiff15)}</td>
+                  <td className="hidden sm:table-cell">{signed(r.xpDiff15)}</td>
                 </tr>
               );
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
-                  No matchups match.
+                <td colSpan={6}>
+                  <div className="otp-empty">
+                    <Search size={21} aria-hidden />
+                    <p>No matching opponents</p>
+                    <span>Try a different champion name.</span>
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        * Fewer than {minGames} games: win rates are greyed out and pulled toward the champion&apos;s average when
-        sorting. Lane WR counts ahead in both gold and XP at 15:00 as a win and mixed leads as half.
+      <p className="border-t border-[var(--otp-line)] px-4 py-3 text-xs leading-relaxed text-[var(--otp-muted)]">
+        * Under {minGames} games, win rates are muted and adjusted toward the overall rate for sorting.
+        At 15 minutes, a lead in both gold and XP counts as a lane win. Mixed leads count as half.
       </p>
     </div>
   );

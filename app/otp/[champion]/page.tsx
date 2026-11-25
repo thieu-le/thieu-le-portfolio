@@ -1,8 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Footprints,
+  Layers,
+  Swords,
+  Target,
+  TrendingUp,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import MatchupList, { type MatchupRow } from "../components/MatchupList";
 import SetupNotice from "../components/SetupNotice";
+import { Rate, signed } from "../components/StatDisplay";
 import {
   adjustedWinRate,
   getChampionDetail,
@@ -25,10 +38,11 @@ export const revalidate = 3600;
 
 type Props = {
   params: Promise<{ champion: string }>;
-  searchParams: Promise<{ vs?: string }>;
+  searchParams: Promise<{ vs?: string | string[] }>;
 };
 
 type StaticData = Awaited<ReturnType<typeof getStaticData>>;
+type SetupComparison = { skill?: string; build?: number[]; runes?: number[] };
 
 export async function generateMetadata({ params }: Props) {
   const { champion } = await params;
@@ -37,79 +51,98 @@ export async function generateMetadata({ params }: Props) {
   return { title: c ? `${c.name} one-trick builds and matchups | One-Trick Stats` : "One-Trick Stats" };
 }
 
-// ---- Small building blocks ----
-
-function Pct({ s, min = MIN_WR_GAMES }: { s: StatRow; min?: number }) {
-  const wr = winRate(s);
-  const color =
-    s.games < min ? "text-zinc-500" : wr >= 52 ? "text-emerald-400" : wr <= 48 ? "text-rose-400" : "text-zinc-200";
-  return <span className={`tabular-nums ${color}`}>{wr.toFixed(1)}%</span>;
+function GameRate({ stat, min = MIN_WR_GAMES }: { stat: StatRow; min?: number }) {
+  return <Rate value={winRate(stat)} muted={stat.games < min} />;
 }
 
-function Row({ s }: { s: StatRow }) {
+function Sample({ stat }: { stat: StatRow }) {
   return (
-    <span className="text-sm text-right shrink-0">
-      <Pct s={s} />
-      <span className="text-zinc-500 ml-2 tabular-nums">{s.games} games</span>
-    </span>
+    <div className="otp-sample">
+      <span className="sr-only">Win rate</span>
+      <GameRate stat={stat} />
+      <span>{stat.games.toLocaleString()} {stat.games === 1 ? "game" : "games"}</span>
+    </div>
   );
 }
 
-function Icon({ src, alt, size = 32 }: { src: string; alt: string; size?: number }) {
-  return <Image src={src} alt={alt} title={alt} width={size} height={size} unoptimized className="rounded" />;
+function ItemIcon({ src, name, size }: { src: string; name: string; size: number }) {
+  return <Image src={src} alt={name} title={name} width={size} height={size} unoptimized className="otp-item" />;
 }
 
-function Card({ title, badge, children }: { title: string; badge?: React.ReactNode; children: React.ReactNode }) {
+function Card({
+  title,
+  icon: Icon,
+  differs,
+  nested,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  differs?: boolean;
+  nested?: boolean;
+  children: React.ReactNode;
+}) {
+  const Heading = nested ? "h4" : "h3";
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">{title}</h3>
-        {badge}
+    <section className="otp-panel otp-card">
+      <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="otp-card-icon"><Icon size={16} aria-hidden /></span>
+        <Heading>{title}</Heading>
+        {differs && <span className="ml-auto text-xs font-medium text-[var(--otp-accent)]">Differs from usual</span>}
       </div>
       {children}
     </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Metric({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="otp-metric"><dt>{label}</dt><dd>{value}</dd></div>;
+}
+
+function Empty({ children = "Not enough games yet." }: { children?: React.ReactNode }) {
+  return <p className="text-sm text-[var(--otp-muted)]">{children}</p>;
+}
+
+function Alternatives({ count, children }: { count: number; children: React.ReactNode }) {
+  if (!count) return null;
+
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className="text-xl font-semibold">{value}</div>
+    <details className="otp-alternatives">
+      <summary>{count} {count === 1 ? "alternative" : "alternatives"} <ChevronDown size={16} aria-hidden /></summary>
+      <ul className="mt-2">{children}</ul>
+    </details>
+  );
+}
+
+function SkillOrder({ order }: { order: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="sr-only">{order.split(">").map((key) => key.trim()).join(", then ")}</span>
+      {order.split(">").map((key, index) => (
+        <span aria-hidden="true" key={index} className="flex items-center gap-1">
+          {index > 0 && <ChevronRight size={12} className="text-[var(--otp-muted)]" />}
+          <span className="otp-skill">{key.trim()}</span>
+        </span>
+      ))}
     </div>
   );
 }
 
-function Empty() {
-  return <p className="text-sm text-zinc-500">Not enough games yet.</p>;
-}
-
-const DifferentBadge = () => (
-  <span className="text-xs rounded-full bg-amber-400/15 text-amber-300 px-2 py-0.5">Differs from usual</span>
-);
-
-// ---- Setup lists: the most popular option large, alternatives below ----
-
-function SkillCard({ rows, usual }: { rows: SkillStat[]; usual?: string }) {
+function SkillCard({ rows, usual, nested }: { rows: SkillStat[]; usual?: string; nested?: boolean }) {
   const [top, ...rest] = rows;
   return (
-    <Card title="Skill max" badge={usual && top && top.skill_max !== usual ? <DifferentBadge /> : null}>
+    <Card title="Skill order" icon={TrendingUp} nested={nested} differs={Boolean(usual && top && top.skill_max !== usual)}>
       {top ? (
         <>
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-2xl text-amber-300">{top.skill_max}</span>
-            <Row s={top} />
-          </div>
-          {rest.length > 0 && (
-            <ul className="mt-3 space-y-1 border-t border-zinc-800 pt-2">
-              {rest.map((s) => (
-                <li key={s.skill_max} className="flex items-center justify-between text-zinc-400">
-                  <span className="font-mono">{s.skill_max}</span>
-                  <Row s={s} />
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="flex items-center justify-between gap-2"><SkillOrder order={top.skill_max} /><Sample stat={top} /></div>
+          <p className="otp-recommendation mt-2">Max abilities in this order.</p>
+          <Alternatives count={rest.length}>
+            {rest.map((s) => (
+              <li key={s.skill_max} className="flex items-center justify-between gap-2">
+                <SkillOrder order={s.skill_max} /><Sample stat={s} />
+              </li>
+            ))}
+          </Alternatives>
         </>
       ) : <Empty />}
     </Card>
@@ -118,39 +151,33 @@ function SkillCard({ rows, usual }: { rows: SkillStat[]; usual?: string }) {
 
 function ItemChain({ ids, dd, size }: { ids: number[]; dd: StaticData; size: number }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       {ids.map((id, i) => (
-        <span key={id} className="flex items-center gap-1">
-          {i > 0 && <span className="text-zinc-600">›</span>}
-          <Icon src={dd.itemIcon(id)} alt={dd.itemName(id)} size={size} />
+        <span key={`${id}-${i}`} className="flex items-center gap-1">
+          {i > 0 && <ChevronRight size={12} className="text-[var(--otp-muted)]" aria-hidden />}
+          <ItemIcon src={dd.itemIcon(id)} name={dd.itemName(id)} size={size} />
         </span>
       ))}
     </div>
   );
 }
 
-function BuildCard({ rows, dd, usual }: { rows: BuildStat[]; dd: StaticData; usual?: number[] }) {
+function BuildCard({ rows, dd, usual, nested }: { rows: BuildStat[]; dd: StaticData; usual?: number[]; nested?: boolean }) {
   const [top, ...rest] = rows;
-  const differs = usual && top && top.core_items.join("-") !== usual.join("-");
+  const differs = Boolean(usual && top && top.core_items.join("-") !== usual.join("-"));
   return (
-    <Card title="Core build" badge={differs ? <DifferentBadge /> : null}>
+    <Card title="Core build" icon={Swords} differs={differs} nested={nested}>
       {top ? (
         <>
-          <div className="flex items-center justify-between gap-3">
-            <ItemChain ids={top.core_items} dd={dd} size={40} />
-            <Row s={top} />
-          </div>
-          <p className="mt-1 text-xs text-zinc-500">{top.core_items.map(dd.itemName).join(" › ")}</p>
-          {rest.length > 0 && (
-            <ul className="mt-3 space-y-2 border-t border-zinc-800 pt-2">
-              {rest.map((b) => (
-                <li key={b.core_items.join("-")} className="flex items-center justify-between gap-3">
-                  <ItemChain ids={b.core_items} dd={dd} size={28} />
-                  <Row s={b} />
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="flex items-center justify-between gap-2"><ItemChain ids={top.core_items} dd={dd} size={34} /><Sample stat={top} /></div>
+          <p className="otp-recommendation mt-2">{top.core_items.map(dd.itemName).join(" › ")}</p>
+          <Alternatives count={rest.length}>
+            {rest.map((b) => (
+              <li key={b.core_items.join("-")} className="flex items-center justify-between gap-2">
+                <ItemChain ids={b.core_items} dd={dd} size={28} /><Sample stat={b} />
+              </li>
+            ))}
+          </Alternatives>
         </>
       ) : <Empty />}
     </Card>
@@ -159,46 +186,38 @@ function BuildCard({ rows, dd, usual }: { rows: BuildStat[]; dd: StaticData; usu
 
 function RuneIcons({ perks, dd, size }: { perks: number[]; dd: StaticData; size: number }) {
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex flex-wrap items-center gap-1.5">
       {perks.map((id, i) => {
         const rune = dd.rune(id);
-        return rune ? <Icon key={id} src={dd.runeIcon(rune)} alt={rune.name} size={i === 0 ? size + 12 : size} /> : null;
+        if (!rune) return null;
+        const dimension = i === 0 ? size + 10 : size;
+        return <Image key={`${id}-${i}`} src={dd.runeIcon(rune)} alt={rune.name} title={rune.name} width={dimension} height={dimension} unoptimized />;
       })}
     </div>
   );
 }
 
-function RuneCard({ rows, dd, usual }: { rows: RuneStat[]; dd: StaticData; usual?: number[] }) {
+function RuneCard({ rows, dd, usual, nested }: { rows: RuneStat[]; dd: StaticData; usual?: number[]; nested?: boolean }) {
   const [top, ...rest] = rows;
-  const differs = usual && top && top.perks.join("-") !== usual.join("-");
+  const differs = Boolean(usual && top && top.perks.join("-") !== usual.join("-"));
   return (
-    <Card title="Runes" badge={differs ? <DifferentBadge /> : null}>
+    <Card title="Runes" icon={Layers} differs={differs} nested={nested}>
       {top ? (
         <>
-          <div className="flex items-center justify-between gap-3">
-            <RuneIcons perks={top.perks} dd={dd} size={28} />
-            <Row s={top} />
-          </div>
-          <p className="mt-1 text-xs text-zinc-500">
-            {top.perks.map((id) => dd.rune(id)?.name ?? id).join(" · ")}
-          </p>
-          {rest.length > 0 && (
-            <ul className="mt-3 space-y-2 border-t border-zinc-800 pt-2">
-              {rest.map((r) => (
-                <li key={r.perks.join("-")} className="flex items-center justify-between gap-3">
-                  <RuneIcons perks={r.perks} dd={dd} size={20} />
-                  <Row s={r} />
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="flex items-center justify-between gap-2"><RuneIcons perks={top.perks} dd={dd} size={24} /><Sample stat={top} /></div>
+          <p className="otp-recommendation mt-2">{top.perks.map((id) => dd.rune(id)?.name ?? id).join(" · ")}</p>
+          <Alternatives count={rest.length}>
+            {rest.map((r) => (
+              <li key={r.perks.join("-")} className="flex items-center justify-between gap-2">
+                <RuneIcons perks={r.perks} dd={dd} size={20} /><Sample stat={r} />
+              </li>
+            ))}
+          </Alternatives>
         </>
       ) : <Empty />}
     </Card>
   );
 }
-
-// ---- Page ----
 
 export default async function ChampionPage({ params, searchParams }: Props) {
   if (!isConfigured()) return <SetupNotice />;
@@ -214,7 +233,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
     getMatchups(championId),
   ]);
 
-  const opponent = vs ? dd.championsBySlug.get(vs.toLowerCase()) : undefined;
+  const opponent = typeof vs === "string" ? dd.championsBySlug.get(vs.toLowerCase()) : undefined;
   const opponentStats = opponent ? matchups.find((m) => m.opponent_champion_id === Number(opponent.key)) : undefined;
   const matchupDetail = opponent ? await getMatchupDetail(championId, Number(opponent.key)) : null;
 
@@ -236,42 +255,66 @@ export default async function ChampionPage({ params, searchParams }: Props) {
   });
 
   return (
-    <div>
-      <Link href="/otp" className="text-sm text-zinc-400 hover:text-zinc-200">
-        ← All champions
-      </Link>
+    <>
+      <Link href="/otp" className="otp-quiet-link mb-4"><ArrowLeft size={16} aria-hidden /> All champions</Link>
 
-      <div className="mt-4 flex items-center gap-4">
-        <Icon src={dd.championIcon(champ)} alt={champ.name} size={72} />
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{champ.name}</h1>
-          <p className="text-zinc-400 text-sm capitalize">{champ.title}</p>
+      <section aria-labelledby="champion-name" className="otp-panel otp-champion-banner">
+        <div className="otp-hero-art">
+          <Image src={dd.championSplash(champ)} alt="" fill unoptimized preload sizes="(max-width: 700px) 75vw, 900px" />
         </div>
-      </div>
+        <div className="flex items-center gap-3 sm:gap-5">
+          <Image src={dd.championIcon(champ)} alt="" width={84} height={84} unoptimized className="otp-portrait size-15 sm:size-21" />
+          <div>
+            <h1 id="champion-name" className="otp-champion-title">{champ.name}</h1>
+            <p className="mt-1 text-sm text-[var(--otp-muted)] sm:text-base">{champ.title}</p>
+          </div>
+        </div>
+        {champion && (
+          <dl className="mt-5 grid max-w-lg grid-cols-3 gap-2 sm:mt-7">
+            <Metric label="Win rate" value={<GameRate stat={champion} />} />
+            <Metric label="Games" value={champion.games.toLocaleString()} />
+            <Metric label="One-tricks" value={champion.one_tricks.toLocaleString()} />
+          </dl>
+        )}
+      </section>
 
       {!champion ? (
-        <p className="mt-8 text-zinc-400">No Master+ one-tricks found for {champ.name} yet.</p>
+        <div className="otp-panel otp-empty mt-5">
+          <Users size={23} aria-hidden />
+          <p>No Master+ one-tricks found for {champ.name} yet.</p>
+        </div>
       ) : (
         <>
-          <div className="mt-6 grid grid-cols-3 gap-3 max-w-lg">
-            <Stat label="Win rate" value={<Pct s={champion} />} />
-            <Stat label="Games" value={champion.games.toLocaleString()} />
-            <Stat label="One-tricks" value={champion.one_tricks} />
-          </div>
+          <section className="otp-section" aria-labelledby="usual-setup">
+            <div className="otp-section-heading">
+              <div>
+                <h2 id="usual-setup">Most-played setup</h2>
+                <p>The skill order, items and runes {champ.name} one-tricks use most.</p>
+              </div>
+            </div>
+            <div className="grid items-start gap-3 md:grid-cols-3">
+              <SkillCard rows={skills} />
+              <BuildCard rows={builds} dd={dd} />
+              <RuneCard rows={runes} dd={dd} />
+            </div>
+          </section>
 
-          <h2 className="mt-10 text-xl font-semibold">What {champ.name} one-tricks usually run</h2>
-          <div className="mt-4 grid gap-4 lg:grid-cols-3">
-            <SkillCard rows={skills} />
-            <BuildCard rows={builds} dd={dd} />
-            <RuneCard rows={runes} dd={dd} />
-          </div>
-
-          <h2 id="matchup" className="mt-12 text-xl font-semibold scroll-mt-6">Matchups</h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            Lane opponents of {champ.name} one-tricks. Pick one to see what they change for it.
-          </p>
-          <div className="mt-4 grid gap-6 lg:grid-cols-2 items-start">
-            <div className="lg:order-last lg:sticky lg:top-4">
+          <section id="matchup" className="otp-section" aria-labelledby="matchup-title">
+            <div className="otp-section-heading">
+              <div>
+                <h2 id="matchup-title">Lane matchups</h2>
+                <p>Choose an opponent to see how {champ.name} one-tricks adapt their setup.</p>
+              </div>
+            </div>
+            <div className={matchupRows.length > 0 ? "otp-matchups" : ""}>
+              {matchupRows.length > 0 && (
+                <MatchupList
+                  rows={matchupRows}
+                  selected={opponent ? opponent.id.toLowerCase() : null}
+                  baseHref={`/otp/${champ.id.toLowerCase()}`}
+                  minGames={MIN_WR_GAMES}
+                />
+              )}
               {opponent && matchupDetail ? (
                 <MatchupPanel
                   dd={dd}
@@ -282,78 +325,71 @@ export default async function ChampionPage({ params, searchParams }: Props) {
                   usual={{ skill: skills[0]?.skill_max, build: builds[0]?.core_items, runes: runes[0]?.perks }}
                 />
               ) : (
-                <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-500">
-                  {matchupRows.length
-                    ? "Pick an opponent to see the skill max, build and runes one-tricks use into them."
-                    : "No matchup data yet. It fills in as the collector gathers games."}
+                <div className="otp-panel otp-empty">
+                  <Target size={23} aria-hidden />
+                  <h3>{matchupRows.length ? "Choose an opponent" : "No matchup data yet"}</h3>
+                  <span>
+                    {matchupRows.length
+                      ? "Their lane stats and matchup-specific build will appear here."
+                      : "Matchups will appear as more games are collected."}
+                  </span>
                 </div>
               )}
             </div>
-            <MatchupList
-              rows={matchupRows}
-              selected={opponent ? opponent.id.toLowerCase() : null}
-              baseHref={`/otp/${champ.id.toLowerCase()}`}
-              minGames={MIN_WR_GAMES}
-            />
-          </div>
+          </section>
 
-          <div className="mt-12 grid gap-4 lg:grid-cols-2">
-            <Card title="Boots">
-              {boots.length ? (
-                <ul className="space-y-2">
-                  {boots.map((b) => (
-                    <li key={b.boots} className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Icon src={dd.itemIcon(b.boots)} alt={dd.itemName(b.boots)} />
-                        <span className="text-sm">{dd.itemName(b.boots)}</span>
-                      </span>
-                      <Row s={b} />
-                    </li>
-                  ))}
-                </ul>
-              ) : <Empty />}
-            </Card>
-
-            <Card title={`${champ.name} one-tricks`}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-zinc-400">
-                    <tr>
-                      <th className="py-1 text-left font-medium">Player</th>
-                      <th className="py-1 text-left font-medium">Rank</th>
-                      <th className="py-1 text-right font-medium">Games</th>
-                      <th className="py-1 text-right font-medium">Win rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {players.map((p) => (
-                      <tr key={p.puuid} className="border-t border-zinc-800">
-                        <td className="py-2">
-                          <span className="text-xs text-zinc-500 mr-2">{PLATFORM_LABEL[p.platform] ?? p.platform}</span>
-                          {p.game_name ? (
-                            <>
-                              {p.game_name}
-                              <span className="text-zinc-500">#{p.tag_line}</span>
-                            </>
-                          ) : (
-                            <span className="text-zinc-500">Unknown</span>
-                          )}
-                        </td>
-                        <td className="py-2 capitalize">
-                          {p.tier.toLowerCase()} {p.league_points} LP
-                        </td>
-                        <td className="py-2 text-right tabular-nums">{p.games}</td>
-                        <td className="py-2 text-right"><Pct s={p} min={10} /></td>
-                      </tr>
+          <section className="otp-section" aria-labelledby="more-stats">
+            <div className="otp-section-heading"><h2 id="more-stats">Boots &amp; players</h2></div>
+            <div className="grid items-start gap-3 lg:grid-cols-[1fr_2fr]">
+              <Card title="Boots" icon={Footprints}>
+                {boots.length ? (
+                  <ul className="divide-y divide-[var(--otp-line)]">
+                    {boots.map((b) => (
+                      <li key={b.boots} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                        <span className="flex items-center gap-2 text-sm">
+                          <ItemIcon src={dd.itemIcon(b.boots)} name={dd.itemName(b.boots)} size={32} />
+                          <span>{dd.itemName(b.boots)}</span>
+                        </span>
+                        <Sample stat={b} />
+                      </li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+                  </ul>
+                ) : <Empty />}
+              </Card>
+              <Card title={`${champ.name} one-tricks`} icon={Users}>
+                {players.length ? (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--otp-line)]">
+                    <table className="otp-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Player</th>
+                          <th scope="col">Rank</th>
+                          <th scope="col">Games</th>
+                          <th scope="col">Win rate</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {players.map((p) => (
+                          <tr key={p.puuid}>
+                            <th scope="row">
+                              <span>{p.game_name || "Unknown"}{p.game_name && p.tag_line && <span className="text-[var(--otp-muted)]">#{p.tag_line}</span>}</span>
+                              <span className="block text-xs text-[var(--otp-muted)]">{PLATFORM_LABEL[p.platform] ?? p.platform}</span>
+                            </th>
+                            <td className="capitalize whitespace-nowrap">{p.tier.toLowerCase()} {p.league_points.toLocaleString()} LP</td>
+                            <td>{p.games.toLocaleString()}</td>
+                            <td><GameRate stat={p} min={10} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <Empty>No player data yet.</Empty>}
+              </Card>
+            </div>
+          </section>
         </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -370,45 +406,40 @@ function MatchupPanel({
   opponent: { name: string; icon: string };
   stats: MatchupStat | undefined;
   detail: Awaited<ReturnType<typeof getMatchupDetail>>;
-  usual: { skill?: string; build?: number[]; runes?: number[] };
+  usual: SetupComparison;
 }) {
-  const lane = stats ? laneWinRate(stats) : null;
-  const signed = (n: number | null | undefined) => (n == null ? "–" : `${n > 0 ? "+" : ""}${n.toLocaleString()}`);
-
   return (
-    <div className="rounded-lg border border-amber-400/40 bg-zinc-900/60 p-4 space-y-4">
+    <section id="matchup-detail" tabIndex={-1} aria-labelledby="matchup-detail-title" className="otp-panel otp-matchup-panel space-y-3">
       <div className="flex items-center gap-3">
-        <Icon src={opponent.icon} alt={opponent.name} size={48} />
+        <Image src={opponent.icon} alt="" width={46} height={46} unoptimized className="otp-portrait" />
         <div>
-          <h3 className="text-lg font-semibold">
-            {championName} vs {opponent.name}
-          </h3>
-          <p className="text-sm text-zinc-400">
-            Sample size: <span className="text-zinc-100 font-medium">{stats?.games ?? 0} games</span>
+          <h3 id="matchup-detail-title" className="text-lg leading-tight font-semibold">{championName} vs {opponent.name}</h3>
+          <p className="mt-1 text-xs text-[var(--otp-muted)]">
+            {stats?.games.toLocaleString() ?? 0} tracked {stats?.games === 1 ? "game" : "games"}
           </p>
         </div>
       </div>
 
       {!stats ? (
-        <p className="text-sm text-zinc-500">No games against {opponent.name} yet.</p>
+        <Empty>No games against {opponent.name} yet.</Empty>
       ) : (
         <>
           {stats.games < MIN_WR_GAMES && (
-            <p className="text-xs rounded-md bg-zinc-800 text-zinc-300 px-3 py-2">
-              Small sample: under {MIN_WR_GAMES} games, so treat the win rates as a rough signal.
+            <p className="rounded-lg bg-[var(--otp-subtle)] px-3 py-2 text-xs text-[var(--otp-muted)]">
+              Small sample · under {MIN_WR_GAMES} games
             </p>
           )}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat label="Game WR" value={<Pct s={stats} />} />
-            <Stat label="Lane WR" value={lane === null ? "–" : `${lane.toFixed(1)}%`} />
-            <Stat label="Gold @15" value={signed(stats.avg_gold_diff_15)} />
-            <Stat label="XP @15" value={signed(stats.avg_xp_diff_15)} />
-          </div>
-          <SkillCard rows={detail.skills} usual={usual.skill} />
-          <BuildCard rows={detail.builds} dd={dd} usual={usual.build} />
-          <RuneCard rows={detail.runes} dd={dd} usual={usual.runes} />
+          <dl className="grid grid-cols-2 gap-2 min-[25rem]:grid-cols-4">
+            <Metric label="Game WR" value={<GameRate stat={stats} />} />
+            <Metric label="Lane WR" value={<Rate value={laneWinRate(stats)} muted={stats.games < MIN_WR_GAMES} />} />
+            <Metric label="Gold @15" value={signed(stats.avg_gold_diff_15)} />
+            <Metric label="XP @15" value={signed(stats.avg_xp_diff_15)} />
+          </dl>
+          <SkillCard rows={detail.skills} usual={usual.skill} nested />
+          <BuildCard rows={detail.builds} dd={dd} usual={usual.build} nested />
+          <RuneCard rows={detail.runes} dd={dd} usual={usual.runes} nested />
         </>
       )}
-    </div>
+    </section>
   );
 }
