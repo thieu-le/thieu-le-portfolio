@@ -59,6 +59,49 @@ export async function getChampionDetail(championId: number) {
   return { champion: champion[0] ?? null, builds, boots, runes, skills, players };
 }
 
+export type MatchupStat = StatRow & {
+  opponent_champion_id: number;
+  lane_games: number;
+  lane_wins: number;
+  lane_losses: number;
+  avg_gold_diff_15: number | null;
+  avg_xp_diff_15: number | null;
+};
+
+export const getMatchups = (championId: number) =>
+  view<MatchupStat>("otp_matchup_stats", `select=*&champion_id=eq.${championId}&order=games.desc`);
+
+export async function getMatchupDetail(championId: number, opponentId: number) {
+  const c = `champion_id=eq.${championId}&opponent_champion_id=eq.${opponentId}`;
+  const [builds, runes, skills] = await Promise.all([
+    view<BuildStat>("otp_matchup_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=5`),
+    view<RuneStat>("otp_matchup_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=4`),
+    view<SkillStat>("otp_matchup_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=3`),
+  ]);
+  return { builds, runes, skills };
+}
+
+/**
+ * Lane win rate from gold and XP leads at 15:00: ahead in both counts as a
+ * win, behind in both as a loss, mixed as half. Null without lane data.
+ */
+export function laneWinRate(m: Pick<MatchupStat, "lane_games" | "lane_wins" | "lane_losses">): number | null {
+  if (!m.lane_games) return null;
+  const even = m.lane_games - m.lane_wins - m.lane_losses;
+  return (100 * (m.lane_wins + even / 2)) / m.lane_games;
+}
+
+/** Below this many games a win rate is shown greyed out and not trusted for sorting. */
+export const MIN_WR_GAMES = 20;
+
+/**
+ * Win rate pulled toward `baseline` (the champion's overall win rate) by
+ * `weight` phantom games, so a 4-1 matchup doesn't rank as the hardest counter.
+ */
+export function adjustedWinRate(s: StatRow, baseline: number, weight = MIN_WR_GAMES): number {
+  return (s.wins + (weight * baseline) / 100) / (s.games + weight) * 100;
+}
+
 // ---- Data Dragon ----
 
 type DDChampion = { id: string; key: string; name: string; title: string };

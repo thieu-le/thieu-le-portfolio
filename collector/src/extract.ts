@@ -10,6 +10,11 @@ export type GameRow = {
   patch: string;
   champion_id: number;
   team_position: string | null;
+  opponent_champion_id: number | null;
+  gold_diff_10: number | null;
+  xp_diff_10: number | null;
+  gold_diff_15: number | null;
+  xp_diff_15: number | null;
   win: boolean;
   game_start: string;
   game_duration: number;
@@ -43,6 +48,12 @@ export function isRemake(match: Match, p: MatchParticipant): boolean {
   return Boolean(p.gameEndedInEarlySurrender) || match.info.gameDuration < 5 * 60;
 }
 
+/** The enemy in the same position. Undefined when Riot couldn't assign positions. */
+export function findLaneOpponent(match: Match, p: MatchParticipant): MatchParticipant | undefined {
+  if (!p.teamPosition) return undefined;
+  return match.info.participants.find((x) => x.teamId !== p.teamId && x.teamPosition === p.teamPosition);
+}
+
 const SLOT = ['', 'Q', 'W', 'E', 'R'];
 
 type TimelineDerived = {
@@ -50,9 +61,27 @@ type TimelineDerived = {
   boots: number | null;
   skill_order: string | null;
   skill_max: string | null;
+  gold_diff_10: number | null;
+  xp_diff_10: number | null;
+  gold_diff_15: number | null;
+  xp_diff_15: number | null;
 };
 
-export function fromTimeline(timeline: Timeline, participantId: number, items: ItemCatalog): TimelineDerived {
+/** Player minus lane opponent at `minute`, or nulls when either frame is missing. */
+function laneDiff(timeline: Timeline, minute: number, participantId: number, opponentId?: number) {
+  const frame = timeline.info.frames[minute]?.participantFrames;
+  const me = frame?.[String(participantId)];
+  const opp = opponentId ? frame?.[String(opponentId)] : undefined;
+  if (!me || !opp) return { gold: null, xp: null };
+  return { gold: me.totalGold - opp.totalGold, xp: me.xp - opp.xp };
+}
+
+export function fromTimeline(
+  timeline: Timeline,
+  participantId: number,
+  items: ItemCatalog,
+  opponentId?: number,
+): TimelineDerived {
   const purchases: number[] = [];
   const skills: string[] = [];
 
@@ -77,11 +106,17 @@ export function fromTimeline(timeline: Timeline, participantId: number, items: I
     if (core.length === 3) break;
   }
 
+  const at10 = laneDiff(timeline, 10, participantId, opponentId);
+  const at15 = laneDiff(timeline, 15, participantId, opponentId);
   return {
     core_items: core.length === 3 ? core : null,
     boots: purchases.find((id) => items.isBoots(id)) ?? null,
     skill_order: skills.length ? skills.slice(0, 18).join('') : null,
     skill_max: skillMax(skills),
+    gold_diff_10: at10.gold,
+    xp_diff_10: at10.xp,
+    gold_diff_15: at15.gold,
+    xp_diff_15: at15.xp,
   };
 }
 
@@ -115,6 +150,11 @@ export function toGameRow(
     patch: patchOf(match.info.gameVersion),
     champion_id: p.championId,
     team_position: p.teamPosition || null,
+    opponent_champion_id: findLaneOpponent(match, p)?.championId ?? null,
+    gold_diff_10: derived?.gold_diff_10 ?? null,
+    xp_diff_10: derived?.xp_diff_10 ?? null,
+    gold_diff_15: derived?.gold_diff_15 ?? null,
+    xp_diff_15: derived?.xp_diff_15 ?? null,
     win: p.win,
     game_start: new Date(match.info.gameStartTimestamp).toISOString(),
     game_duration: match.info.gameDuration,

@@ -24,7 +24,7 @@ import { config, type Platform } from './config.ts';
 import { CoverageQueue } from './coverage.ts';
 import { remove, select, update, upsert } from './db.ts';
 import { loadItemCatalog, type ItemCatalog } from './dataDragon.ts';
-import { findParticipant, fromTimeline, isRemake, toGameRow, type GameRow } from './extract.ts';
+import { findLaneOpponent, findParticipant, fromTimeline, isRemake, toGameRow, type GameRow } from './extract.ts';
 import { log } from './log.ts';
 import {
   getAccount,
@@ -81,7 +81,8 @@ async function buildRow(platform: Platform, match: Match, puuid: string, items: 
   let derived = null;
   if (config.fetchTimelines) {
     try {
-      derived = fromTimeline(await getTimeline(platform, match.metadata.matchId), p.participantId, items);
+      const opponent = findLaneOpponent(match, p);
+      derived = fromTimeline(await getTimeline(platform, match.metadata.matchId), p.participantId, items, opponent?.participantId);
     } catch (err) {
       if (!(err instanceof RiotNotFound)) throw err;
     }

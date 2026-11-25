@@ -79,6 +79,7 @@ export type Account = { puuid: string; gameName?: string; tagLine?: string };
 export type MatchParticipant = {
   puuid: string;
   participantId: number;
+  teamId: number;
   championId: number;
   teamPosition: string;
   win: boolean;
@@ -117,7 +118,14 @@ export type TimelineEvent = {
   levelUpType?: string;
 };
 
-export type Timeline = { info: { frames: { events: TimelineEvent[] }[] } };
+export type ParticipantFrame = { totalGold: number; xp: number };
+
+export type Timeline = {
+  info: {
+    // One frame per minute; frames[15] is the 15:00 snapshot.
+    frames: { events: TimelineEvent[]; participantFrames?: Record<string, ParticipantFrame> }[];
+  };
+};
 
 // ---- Endpoints ----
 
