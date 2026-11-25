@@ -1,0 +1,6 @@
+{
+  "name": "otp-collector",
+  "private": true,
+  "type": "module",
+  "description": "Crawls Masters+ one-trick games from the Riot API into Supabase. Runs on Node 24 with native TypeScript; no dependencies."
+}

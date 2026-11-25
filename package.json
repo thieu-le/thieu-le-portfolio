@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "otp:collect": "node --env-file-if-exists=.env.local collector/src/index.ts",
+    "otp:typecheck": "tsc -p collector"
   },
   "dependencies": {
     "framer-motion": "^12.33.0",
