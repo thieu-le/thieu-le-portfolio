@@ -1,17 +1,27 @@
 // One-trick collector. Run with: node collector/src/index.ts
 //
-// Each run, per platform (all platforms in parallel, each on its own Riot
-// rate-limit budget):
-//   1. Refresh the Challenger / Grandmaster / Master ladders (3 calls).
-//   2. Pull new solo-queue games for known one-tricks (cheapest, freshest data).
-//   3. Fill in Riot IDs for one-tricks that don't have one yet.
-//   4. Classify unclassified or stale players with whatever time is left.
-// Then prune games older than the retention window.
+// Goal: data for every champion first, then depth. Per platform (NA, EUW, KR
+// in parallel, each on its own Riot rate-limit budget), with two lanes that
+// also run in parallel because they use different Riot hosts:
 //
-// Runs are resumable: every player stores when it was last checked, so a run
-// cut short by OTP_MAX_RUNTIME_MINUTES picks up where the last one stopped.
+//   Platform host (na1, euw1, kr): cheap
+//     1. Refresh the Challenger / Grandmaster / Master ladders (3 calls).
+//     2. Mastery scan, highest LP first: 1 call per player gives their top
+//        champion. Players without a dominant champion are ruled out here.
+//
+//   Regional host (americas, europe, asia): expensive match history
+//     3. Coverage: classify candidates for the champions with the fewest
+//        known one-tricks first. New one-tricks get OTP_BACKFILL_DAYS of games.
+//     4. Refresh known one-tricks not checked in OTP_UPDATE_HOURS.
+//     5. Keep classifying candidates for already-covered champions.
+//     6. Fill in Riot IDs for display.
+//
+// Then prune games older than the retention window. Every player stores when
+// it was last checked, so a run cut short picks up where the last one stopped.
 
+import { setTimeout as sleep } from 'node:timers/promises';
 import { config, type Platform } from './config.ts';
+import { CoverageQueue } from './coverage.ts';
 import { remove, select, update, upsert } from './db.ts';
 import { loadItemCatalog, type ItemCatalog } from './dataDragon.ts';
 import { findParticipant, fromTimeline, isRemake, toGameRow, type GameRow } from './extract.ts';
@@ -21,6 +31,7 @@ import {
   getApexLeague,
   getMatch,
   getSoloMatchIds,
+  getSoloMatchIdsSince,
   getTimeline,
   getTopMasteries,
   requestStats,
@@ -32,43 +43,41 @@ const startedAt = Date.now();
 const deadline = startedAt + config.maxRuntimeMinutes * 60_000;
 const hasTime = () => Date.now() < deadline;
 const nowIso = () => new Date().toISOString();
-const daysAgoIso = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000);
+const daysAgoIso = (days: number) => daysAgo(days).toISOString();
+const isStale = (iso: string | null, days: number) => !iso || Date.parse(iso) < daysAgo(days).getTime();
+const APEX_RECENT_DAYS = 3;
 
 type PlayerRow = {
   puuid: string;
-  platform: Platform;
-  main_champion_id: number | null;
-  last_match_check_at: string | null;
+  league_points: number;
+  wins: number | null;
+  losses: number | null;
+  top_mastery_champion_id: number | null;
+  top_mastery_share: number | null;
+  last_classified_at: string | null;
+  last_mastery_check_at: string | null;
 };
 
-// ---- Step 1: apex ladders ----
+type OneTrickRow = { puuid: string; main_champion_id: number; last_match_check_at: string | null };
 
-async function refreshApex(platform: Platform): Promise<number> {
-  const seenAt = nowIso();
-  let total = 0;
-  for (const tier of ['challenger', 'grandmaster', 'master'] as const) {
-    const league = await getApexLeague(platform, tier);
-    const rows = league.entries
-      .filter((e) => e.puuid)
-      .map((e) => ({
-        puuid: e.puuid,
-        platform,
-        tier: league.tier,
-        league_points: e.leaguePoints,
-        last_seen_apex_at: seenAt,
-        updated_at: seenAt,
-      }));
-    await upsert('otp_players', rows);
-    total += rows.length;
+// ---- Shared helpers ----
+
+async function fetchMatch(platform: Platform, matchId: string): Promise<Match | null> {
+  try {
+    return await getMatch(platform, matchId);
+  } catch (err) {
+    if (err instanceof RiotNotFound) return null;
+    throw err;
   }
-  return total;
 }
-
-// ---- Shared: fetch a match + timeline and build the row ----
 
 async function buildRow(platform: Platform, match: Match, puuid: string, items: ItemCatalog): Promise<GameRow | null> {
   const p = findParticipant(match, puuid);
   if (!p || isRemake(match, p)) return null;
+  if (Date.parse(new Date(match.info.gameStartTimestamp).toISOString()) < daysAgo(config.retentionDays).getTime()) {
+    return null;
+  }
   let derived = null;
   if (config.fetchTimelines) {
     try {
@@ -80,52 +89,193 @@ async function buildRow(platform: Platform, match: Match, puuid: string, items: 
   return toGameRow(match, p, platform, derived);
 }
 
-async function fetchMatch(platform: Platform, matchId: string): Promise<Match | null> {
-  try {
-    return await getMatch(platform, matchId);
-  } catch (err) {
-    if (err instanceof RiotNotFound) return null;
-    throw err;
+/** Fetch these matches and store the ones played on `champion`. Returns rows stored. */
+async function storeMainGames(
+  platform: Platform,
+  puuid: string,
+  champion: number,
+  matchIds: string[],
+  items: ItemCatalog,
+  known = new Map<string, Match>(),
+): Promise<number> {
+  const rows: GameRow[] = [];
+  for (const id of matchIds) {
+    if (!hasTime()) break;
+    const match = known.get(id) ?? (await fetchMatch(platform, id));
+    if (!match || findParticipant(match, puuid)?.championId !== champion) continue;
+    const row = await buildRow(platform, match, puuid, items);
+    if (row) rows.push(row);
+    // Write in chunks so a run cut short keeps what it paid for.
+    if (rows.length >= 25) await upsert('otp_games', rows.splice(0));
   }
+  await upsert('otp_games', rows);
+  return rows.length;
 }
 
-// ---- Step 2: new games for known one-tricks ----
+// ---- Platform lane ----
 
-async function updateOneTricks(platform: Platform, items: ItemCatalog): Promise<number> {
-  const players = await select<PlayerRow>(
+async function refreshApex(platform: Platform): Promise<void> {
+  const seenAt = nowIso();
+  let total = 0;
+  for (const tier of ['challenger', 'grandmaster', 'master'] as const) {
+    const league = await getApexLeague(platform, tier);
+    const rows = league.entries
+      .filter((e) => e.puuid)
+      .map((e) => ({
+        puuid: e.puuid,
+        platform,
+        tier: league.tier,
+        league_points: e.leaguePoints,
+        wins: e.wins,
+        losses: e.losses,
+        last_seen_apex_at: seenAt,
+        updated_at: seenAt,
+      }));
+    await upsert('otp_players', rows);
+    total += rows.length;
+  }
+  log.info(`[${platform}] ${total} apex players on the ladder`);
+}
+
+const isCandidate = (p: Pick<PlayerRow, 'top_mastery_share' | 'last_classified_at'>) =>
+  (p.top_mastery_share ?? 0) >= config.masteryPrefilterShare && isStale(p.last_classified_at, config.reclassifyDays);
+
+const toCandidate = (p: PlayerRow) => ({
+  puuid: p.puuid,
+  champion: p.top_mastery_champion_id!,
+  lp: p.league_points,
+  games: (p.wins ?? 0) + (p.losses ?? 0),
+});
+
+/** Mastery for every apex player not scanned this week, highest LP first. Feeds the queue as it goes. */
+async function masteryScan(platform: Platform, players: PlayerRow[], queue: CoverageQueue): Promise<void> {
+  const due = players
+    .filter((p) => isStale(p.last_mastery_check_at, config.reclassifyDays))
+    .sort((a, b) => b.league_points - a.league_points);
+  let scanned = 0;
+  for (const p of due) {
+    if (!hasTime()) break;
+    const masteries = await getTopMasteries(platform, p.puuid);
+    const total = masteries.reduce((s, m) => s + m.championPoints, 0);
+    const top = masteries[0];
+    const share = top && total ? top.championPoints / total : 0;
+    const checkedAt = nowIso();
+    const patch: Record<string, unknown> = {
+      top_mastery_champion_id: top?.championId ?? null,
+      top_mastery_share: share,
+      last_mastery_check_at: checkedAt,
+    };
+    if (share < config.masteryPrefilterShare) {
+      // Ruled out without spending any match-history calls.
+      Object.assign(patch, { is_one_trick: false, main_champion_id: null, last_classified_at: checkedAt });
+    }
+    await update('otp_players', { puuid: `eq.${p.puuid}` }, patch);
+    scanned++;
+    const next = { ...p, top_mastery_champion_id: top?.championId ?? null, top_mastery_share: share };
+    if (top && isCandidate(next)) queue.add(toCandidate(next));
+  }
+  log.info(`[${platform}] mastery-scanned ${scanned} players`);
+}
+
+// ---- Regional lane ----
+
+/** Classify one player; on a hit, backfill their main-champion games. Returns the main champion or null. */
+async function classify(platform: Platform, puuid: string, items: ItemCatalog): Promise<number | null> {
+  const classifiedAt = nowIso();
+  const ids = await getSoloMatchIds(platform, puuid, { count: config.classifySample });
+  const sample = new Map<string, Match>();
+  const champCounts = new Map<number, number>();
+  for (const id of ids) {
+    const match = await fetchMatch(platform, id);
+    if (!match) continue;
+    const p = findParticipant(match, puuid);
+    if (!p || isRemake(match, p)) continue;
+    sample.set(id, match);
+    champCounts.set(p.championId, (champCounts.get(p.championId) ?? 0) + 1);
+  }
+
+  const [main, mainGames] = [...champCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [0, 0];
+  const share = sample.size ? mainGames / sample.size : 0;
+  if (sample.size < config.minSampleGames || share < config.oneTrickShare) {
+    await update('otp_players', { puuid: `eq.${puuid}` }, {
+      is_one_trick: false,
+      main_champion_id: null,
+      main_champion_share: null,
+      sample_size: sample.size,
+      last_classified_at: classifiedAt,
+    });
+    return null;
+  }
+
+  // Mark first so the player shows up on the site even if the backfill is cut short.
+  await update('otp_players', { puuid: `eq.${puuid}` }, {
+    is_one_trick: true,
+    main_champion_id: main,
+    main_champion_share: share,
+    sample_size: sample.size,
+    last_classified_at: classifiedAt,
+  });
+
+  const backfillIds = await getSoloMatchIdsSince(platform, puuid, daysAgo(Math.min(config.backfillDays, config.retentionDays)));
+  const allIds = [...new Set([...ids, ...backfillIds])];
+  const stored = await storeMainGames(platform, puuid, main, allIds, items, sample);
+  // Only advance the checkpoint if the whole backfill made it in.
+  if (hasTime()) await update('otp_players', { puuid: `eq.${puuid}` }, { last_match_check_at: classifiedAt });
+  log.info(`[${platform}] one-trick on champion ${main} (${Math.round(share * 100)}%), ${stored} games`);
+  return main;
+}
+
+async function classifyFrom(
+  platform: Platform,
+  queue: CoverageQueue,
+  pick: () => ReturnType<CoverageQueue['nextAny']>,
+  items: ItemCatalog,
+  waitFor?: Promise<unknown>,
+): Promise<{ checked: number; found: number }> {
+  let scanDone = !waitFor;
+  waitFor?.finally(() => (scanDone = true));
+  let checked = 0;
+  let found = 0;
+  while (hasTime()) {
+    const next = pick();
+    if (!next) {
+      // The mastery scan may still be adding candidates; wait for it.
+      if (scanDone) break;
+      await sleep(2000);
+      continue;
+    }
+    checked++;
+    const main = await classify(platform, next.puuid, items);
+    if (main !== null) {
+      queue.recordOneTrick(main);
+      found++;
+    }
+  }
+  return { checked, found };
+}
+
+async function refreshOneTricks(platform: Platform, items: ItemCatalog): Promise<number> {
+  const due = await select<OneTrickRow>(
     'otp_players',
-    `select=puuid,platform,main_champion_id,last_match_check_at&platform=eq.${platform}` +
-      `&is_one_trick=is.true&last_seen_apex_at=gte.${daysAgoIso(3)}` +
+    `select=puuid,main_champion_id,last_match_check_at&platform=eq.${platform}` +
+      `&is_one_trick=is.true&last_seen_apex_at=gte.${daysAgoIso(APEX_RECENT_DAYS)}` +
+      `&or=(last_match_check_at.is.null,last_match_check_at.lt.${new Date(Date.now() - config.updateHours * 3_600_000).toISOString()})` +
       `&order=last_match_check_at.asc.nullsfirst`,
   );
-
   let stored = 0;
-  for (const player of players) {
+  for (const p of due) {
     if (!hasTime()) break;
-    const checkStartedAt = nowIso();
-    const since = player.last_match_check_at ?? daysAgoIso(config.retentionDays);
-    const ids = await getSoloMatchIds(platform, player.puuid, {
-      count: 100,
-      startTime: Math.floor(Date.parse(since) / 1000),
-    });
-
-    const rows: GameRow[] = [];
-    for (const id of ids) {
-      const match = await fetchMatch(platform, id);
-      if (!match) continue;
-      const p = findParticipant(match, player.puuid);
-      if (!p || p.championId !== player.main_champion_id) continue;
-      const row = await buildRow(platform, match, player.puuid, items);
-      if (row) rows.push(row);
-    }
-    await upsert('otp_games', rows);
-    await update('otp_players', { puuid: `eq.${player.puuid}` }, { last_match_check_at: checkStartedAt });
-    stored += rows.length;
+    const checkedAt = nowIso();
+    const since = new Date(Math.max(
+      p.last_match_check_at ? Date.parse(p.last_match_check_at) : 0,
+      daysAgo(config.retentionDays).getTime(),
+    ));
+    const ids = await getSoloMatchIdsSince(platform, p.puuid, since);
+    stored += await storeMainGames(platform, p.puuid, p.main_champion_id, ids, items);
+    if (hasTime()) await update('otp_players', { puuid: `eq.${p.puuid}` }, { last_match_check_at: checkedAt });
   }
   return stored;
 }
-
-// ---- Step 3: Riot IDs for display ----
 
 async function fillNames(platform: Platform): Promise<void> {
   const players = await select<{ puuid: string }>(
@@ -148,93 +298,38 @@ async function fillNames(platform: Platform): Promise<void> {
   }
 }
 
-// ---- Step 4: classification ----
-
-async function classify(platform: Platform, items: ItemCatalog): Promise<{ checked: number; found: number }> {
-  const players = await select<{ puuid: string }>(
-    'otp_players',
-    `select=puuid&platform=eq.${platform}&last_seen_apex_at=gte.${daysAgoIso(3)}` +
-      `&or=(last_classified_at.is.null,last_classified_at.lt.${daysAgoIso(config.reclassifyDays)})` +
-      `&order=last_classified_at.asc.nullsfirst`,
-  );
-
-  let checked = 0;
-  let found = 0;
-  for (const { puuid } of players) {
-    if (!hasTime()) break;
-    checked++;
-    const classifiedAt = nowIso();
-    const notOneTrick = (sample: number | null) =>
-      update('otp_players', { puuid: `eq.${puuid}` }, {
-        is_one_trick: false,
-        main_champion_id: null,
-        main_champion_share: null,
-        sample_size: sample,
-        last_classified_at: classifiedAt,
-      });
-
-    // Prefilter: 1 call instead of ~20. Lifetime mastery concentrated on one
-    // champion is a good hint that recent games are too.
-    const masteries = await getTopMasteries(platform, puuid);
-    const totalPoints = masteries.reduce((s, m) => s + m.championPoints, 0);
-    if (!masteries.length || masteries[0].championPoints / totalPoints < config.masteryPrefilterShare) {
-      await notOneTrick(null);
-      continue;
-    }
-
-    const ids = await getSoloMatchIds(platform, puuid, { count: config.classifySample });
-    const matches: Match[] = [];
-    const champCounts = new Map<number, number>();
-    for (const id of ids) {
-      const match = await fetchMatch(platform, id);
-      if (!match) continue;
-      const p = findParticipant(match, puuid);
-      if (!p || isRemake(match, p)) continue;
-      matches.push(match);
-      champCounts.set(p.championId, (champCounts.get(p.championId) ?? 0) + 1);
-    }
-
-    const [mainChamp, mainGames] = [...champCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [0, 0];
-    const share = matches.length ? mainGames / matches.length : 0;
-    if (matches.length < config.minSampleGames || share < config.oneTrickShare) {
-      await notOneTrick(matches.length);
-      continue;
-    }
-
-    // One-trick: the sample games on their main are already paid for, keep them.
-    const rows: GameRow[] = [];
-    for (const match of matches) {
-      if (findParticipant(match, puuid)?.championId !== mainChamp) continue;
-      const row = await buildRow(platform, match, puuid, items);
-      if (row && Date.parse(row.game_start) >= Date.parse(daysAgoIso(config.retentionDays))) rows.push(row);
-    }
-    await update('otp_players', { puuid: `eq.${puuid}` }, {
-      is_one_trick: true,
-      main_champion_id: mainChamp,
-      main_champion_share: share,
-      sample_size: matches.length,
-      last_classified_at: classifiedAt,
-      last_match_check_at: classifiedAt,
-    });
-    await upsert('otp_games', rows);
-    found++;
-  }
-  return { checked, found };
-}
-
 // ---- Main ----
 
-async function runPlatform(platform: Platform, items: ItemCatalog): Promise<void> {
-  const apex = await refreshApex(platform);
-  log.info(`[${platform}] ${apex} apex players on the ladder`);
+async function runPlatform(platform: Platform, queue: CoverageQueue, items: ItemCatalog): Promise<void> {
+  await refreshApex(platform);
 
-  const stored = await updateOneTricks(platform, items);
-  log.info(`[${platform}] stored ${stored} new one-trick games`);
+  const players = await select<PlayerRow>(
+    'otp_players',
+    'select=puuid,league_points,wins,losses,top_mastery_champion_id,top_mastery_share,last_classified_at,last_mastery_check_at' +
+      `&platform=eq.${platform}&last_seen_apex_at=gte.${daysAgoIso(APEX_RECENT_DAYS)}`,
+  );
+  // Candidates already mastery-scanned in an earlier run.
+  for (const p of players) {
+    if (p.top_mastery_champion_id && !isStale(p.last_mastery_check_at, config.reclassifyDays) && isCandidate(p)) {
+      queue.add(toCandidate(p));
+    }
+  }
 
-  await fillNames(platform);
+  const scan = masteryScan(platform, players, queue);
+  const regional = (async () => {
+    const coverage = await classifyFrom(platform, queue, () => queue.nextUncovered(), items, scan);
+    log.info(`[${platform}] coverage: classified ${coverage.checked}, found ${coverage.found} one-tricks`);
 
-  const { checked, found } = await classify(platform, items);
-  log.info(`[${platform}] classified ${checked} players, ${found} new or confirmed one-tricks`);
+    const stored = await refreshOneTricks(platform, items);
+    log.info(`[${platform}] refreshed known one-tricks, ${stored} new games`);
+
+    const extra = await classifyFrom(platform, queue, () => queue.nextAny(), items);
+    log.info(`[${platform}] depth: classified ${extra.checked}, found ${extra.found} one-tricks`);
+
+    await fillNames(platform);
+  })();
+
+  await Promise.all([scan, regional]);
 }
 
 async function main(): Promise<void> {
@@ -242,15 +337,25 @@ async function main(): Promise<void> {
   const items = await loadItemCatalog();
   log.info(`Data Dragon ${items.version}`);
 
-  const results = await Promise.allSettled(config.platforms.map((p) => runPlatform(p, items)));
+  // One-trick counts per champion, shared by every region's queue.
+  const counts = new Map<number, number>();
+  const known = await select<{ main_champion_id: number }>('otp_players', 'select=main_champion_id&is_one_trick=is.true');
+  for (const { main_champion_id: c } of known) counts.set(c, (counts.get(c) ?? 0) + 1);
+  log.info(`${known.length} known one-tricks across ${counts.size} champions`);
+
+  const results = await Promise.allSettled(
+    config.platforms.map((p) => runPlatform(p, new CoverageQueue(counts, config.championTarget), items)),
+  );
   results.forEach((r, i) => {
     if (r.status === 'rejected') log.error(`[${config.platforms[i]}] ${(r.reason as Error)?.stack ?? r.reason}`);
   });
 
   await remove('otp_games', { game_start: `lt.${daysAgoIso(config.retentionDays)}` });
 
+  const covered = [...counts.values()].filter((n) => n >= config.championTarget).length;
   const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1);
-  log.info(`Done in ${minutes} min. Riot requests per host: ${JSON.stringify(requestStats())}`);
+  log.info(`Champions at target (${config.championTarget}+ one-tricks): ${covered}. Done in ${minutes} min.`);
+  log.info(`Riot requests per host: ${JSON.stringify(requestStats())}`);
   if (results.some((r) => r.status === 'rejected')) process.exitCode = 1;
 }
 

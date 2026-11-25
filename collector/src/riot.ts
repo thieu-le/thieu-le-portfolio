@@ -69,7 +69,7 @@ async function riotGet<T>(host: Platform | Regional, path: string, params?: Reco
 
 // ---- Types: only the fields the collector reads. ----
 
-export type LeagueEntry = { puuid: string; leaguePoints: number };
+export type LeagueEntry = { puuid: string; leaguePoints: number; wins: number; losses: number };
 export type LeagueList = { tier: string; entries: LeagueEntry[] };
 
 export type ChampionMastery = { championId: number; championPoints: number };
@@ -136,14 +136,29 @@ export function getTopMasteries(platform: Platform, puuid: string, count = 10) {
   );
 }
 
-export function getSoloMatchIds(platform: Platform, puuid: string, opts: { count: number; startTime?: number }) {
-  const params: Record<string, number> = { queue: SOLO_QUEUE_ID, start: 0, count: opts.count };
+export function getSoloMatchIds(
+  platform: Platform,
+  puuid: string,
+  opts: { count: number; start?: number; startTime?: number },
+) {
+  const params: Record<string, number> = { queue: SOLO_QUEUE_ID, start: opts.start ?? 0, count: opts.count };
   if (opts.startTime) params.startTime = opts.startTime;
   return riotGet<string[]>(
     REGIONAL_FOR[platform],
     `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids`,
     params,
   );
+}
+
+/** Every solo queue match ID since `since` (newest first), paging 100 at a time. */
+export async function getSoloMatchIdsSince(platform: Platform, puuid: string, since: Date): Promise<string[]> {
+  const startTime = Math.floor(since.getTime() / 1000);
+  const all: string[] = [];
+  for (let start = 0; ; start += 100) {
+    const page = await getSoloMatchIds(platform, puuid, { count: 100, start, startTime });
+    all.push(...page);
+    if (page.length < 100) return all;
+  }
 }
 
 export function getMatch(platform: Platform, matchId: string) {

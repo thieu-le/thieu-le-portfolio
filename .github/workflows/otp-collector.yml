@@ -1,13 +1,13 @@
 name: One-trick collector
 
 # Crawls Masters+ one-trick games into Supabase for the /otp pages.
-# This repo is public, so scheduled Actions minutes are free. Runs every
-# 3 hours and stops starting new work after 50 minutes, so runs never overlap.
-# The regular writes also keep the free Supabase project from auto-pausing.
+# This repo is public, so scheduled Actions minutes are free. Runs hourly and
+# stops starting new work after 50 minutes, so runs don't pile up. The regular
+# writes also keep the free Supabase project from auto-pausing.
 
 on:
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       max_runtime_minutes:

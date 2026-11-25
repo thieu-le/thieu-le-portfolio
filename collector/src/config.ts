@@ -82,6 +82,15 @@ export const config = Object.freeze({
   masteryPrefilterShare: num('OTP_MASTERY_PREFILTER', 0.3),
   reclassifyDays: num('OTP_RECLASSIFY_DAYS', 7),
 
+  // Coverage first: a champion stops getting priority once it has this many
+  // known one-tricks. Until every champion's candidates are exhausted or
+  // covered, known one-tricks are only refreshed with leftover time.
+  championTarget: num('OTP_CHAMPION_TARGET', 5),
+  // How far back to pull a newly found one-trick's games.
+  backfillDays: num('OTP_BACKFILL_DAYS', 28),
+  // Minimum gap between new-game checks for a known one-trick.
+  updateHours: num('OTP_UPDATE_HOURS', 24),
+
   fetchTimelines: optional('OTP_FETCH_TIMELINES', 'true') === 'true',
   retentionDays: num('OTP_RETENTION_DAYS', 45),
 

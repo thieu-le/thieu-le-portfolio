@@ -9,20 +9,28 @@ China isn't supported because its servers are run by Tencent, not covered by the
 
 ## How a run works
 
-All platforms run in parallel. Riot rate limits are per routing value, so NA
-(`na1`/`americas`), EUW (`euw1`/`europe`) and KR (`kr`/`asia`) each get a full budget.
+Goal: some data for every champion first, then more depth. All platforms run in
+parallel. Riot rate limits are per routing value, so NA (`na1`/`americas`), EUW
+(`euw1`/`europe`) and KR (`kr`/`asia`) each get a full budget. Within a platform, two
+lanes also run in parallel because they use different hosts:
 
-1. **Ladders**: 3 calls per platform for the Challenger, Grandmaster and Master lists.
-2. **Known one-tricks**: pull solo games since their last check and keep the ones on their main.
-3. **Riot IDs**: look up display names for one-tricks (refreshed weekly).
-4. **Classification** with the remaining time. A champion-mastery prefilter (1 call) skips
-   obvious non-one-tricks. Players who pass have their last 20 solo games pulled.
-   **One-trick** means at least 60% of 12 or more games are on one champion. Players are
-   rechecked weekly.
-5. **Prune** games older than 45 days to stay under the 500 MB free database.
+**Platform host (cheap)**
+1. **Ladders**: 3 calls for the Challenger, Grandmaster and Master lists (LP, wins, losses).
+2. **Mastery scan**, highest LP first: 1 call per player for their top champion. Players
+   whose top champion is under 30% of their top-10 mastery are ruled out with no match calls.
 
-Runs stop starting new work after 50 minutes and pick up where they left off next time.
-The first full pass over the ladders takes a few days on a personal key.
+**Regional host (expensive)**
+3. **Coverage**: classify candidates for the champions with the fewest known one-tricks
+   first (shared across regions), best LP then most games within a champion. **One-trick**
+   means at least 60% of their last 20 solo games (12+ non-remakes) on one champion. A new
+   one-trick gets the last 28 days of games on their main backfilled right away.
+4. **Refresh** known one-tricks not checked in 24 hours. Misses are never lost: the next
+   check pages through everything since the last one.
+5. **Depth**: classify remaining candidates for champions that already have 5 one-tricks.
+6. **Riot IDs** for display, refreshed weekly.
+
+Then games older than 45 days are pruned to stay under the 500 MB free database.
+Runs are hourly, stop starting new work after 50 minutes, and resume where they left off.
 
 ## Setup
 
@@ -60,6 +68,9 @@ npm run otp:collect
 | `OTP_MIN_GAMES` | `12` | Minimum non-remake games in the sample |
 | `OTP_MASTERY_PREFILTER` | `0.3` | Top champion's share of top-10 mastery needed before spending match calls |
 | `OTP_RECLASSIFY_DAYS` | `7` | How often players are re-evaluated |
+| `OTP_CHAMPION_TARGET` | `5` | One-tricks per champion before it loses priority |
+| `OTP_BACKFILL_DAYS` | `28` | History pulled for a newly found one-trick |
+| `OTP_UPDATE_HOURS` | `24` | Minimum gap between new-game checks per one-trick |
 | `OTP_FETCH_TIMELINES` | `true` | Timelines give build order, boots and skill order (doubles match calls) |
 | `OTP_RETENTION_DAYS` | `45` | Games older than this are deleted |
 | `OTP_MAX_RUNTIME_MINUTES` | `50` | Stop starting new work after this long |
