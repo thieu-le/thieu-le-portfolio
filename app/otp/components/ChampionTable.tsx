@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowDown, ChevronRight, ChevronsUpDown, Search, X } from "lucide-react";
 
 export type ChampionListRow = {
   slug: string;
@@ -22,64 +23,70 @@ export default function ChampionTable({ rows }: { rows: ChampionListRow[] }) {
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
-      .filter((r) => !q || r.name.toLowerCase().includes(q))
-      .sort((a, b) => b[sort] - a[sort]);
+      .filter((r) => r.name.toLowerCase().includes(q))
+      .sort((a, b) => b[sort] - a[sort] || a.name.localeCompare(b.name));
   }, [rows, query, sort]);
 
   const header = (key: SortKey, label: string) => (
-    <th className="px-3 py-2 text-right font-medium">
-      <button
-        onClick={() => setSort(key)}
-        className={sort === key ? "text-amber-400" : "text-zinc-400 hover:text-zinc-200"}
-      >
+    <th scope="col" aria-sort={sort === key ? "descending" : undefined}>
+      <button type="button" onClick={() => setSort(key)} className="otp-sort" data-active={sort === key}>
         {label}
+        {sort === key ? <ArrowDown size={13} aria-hidden /> : <ChevronsUpDown size={13} aria-hidden />}
       </button>
     </th>
   );
 
   return (
-    <div>
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search champions"
-        aria-label="Search champions"
-        className="mb-4 w-full sm:w-72 rounded-md bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm outline-none focus:border-amber-400"
-      />
-      <div className="overflow-x-auto rounded-lg border border-zinc-800">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-900">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium text-zinc-400">Champion</th>
-              {header("oneTricks", "One-tricks")}
-              {header("games", "Games")}
-              {header("winRate", "Win rate")}
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((r) => (
-              <tr key={r.slug} className="border-t border-zinc-800 hover:bg-zinc-900/60">
-                <td className="px-3 py-2">
-                  <Link href={`/otp/${r.slug}`} className="flex items-center gap-3">
-                    <Image src={r.icon} alt="" width={32} height={32} unoptimized className="rounded" />
-                    <span className="font-medium">{r.name}</span>
-                  </Link>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{r.oneTricks}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{r.games.toLocaleString()}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{r.winRate.toFixed(1)}%</td>
-              </tr>
-            ))}
-            {shown.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-zinc-500">
-                  No champions match.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+    <div className="otp-panel overflow-hidden">
+      <div className="otp-table-toolbar otp-directory-toolbar">
+        <div className="otp-search">
+          <Search size={17} aria-hidden />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search champions" aria-label="Search champions" />
+          {query && <button type="button" aria-label="Clear search" onClick={() => setQuery("")}><X size={16} aria-hidden /></button>}
+        </div>
+        <span aria-live="polite" className="otp-table-count">
+          {shown.length.toLocaleString()} {shown.length === 1 ? "champion" : "champions"}
+        </span>
       </div>
+      <table className="otp-table otp-directory">
+        <thead>
+          <tr>
+            <th scope="col">Champion</th>
+            {header("oneTricks", "One-tricks")}
+            {header("games", "Games")}
+            {header("winRate", "Win rate")}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((r) => (
+            <tr key={r.slug} className="otp-link-row">
+              <th scope="row">
+                <Link href={`/otp/${r.slug}`} prefetch={false} className="otp-row-link">
+                  <Image src={r.icon} alt="" width={40} height={40} unoptimized className="otp-portrait" />
+                  <span>{r.name}</span>
+                </Link>
+              </th>
+              <td>{r.oneTricks.toLocaleString()}</td>
+              <td>{r.games.toLocaleString()}</td>
+              <td>
+                <span className="otp-rate">{r.winRate.toFixed(1)}%</span>
+                <ChevronRight size={16} className="otp-row-arrow" aria-hidden />
+              </td>
+            </tr>
+          ))}
+          {shown.length === 0 && (
+            <tr>
+              <td colSpan={4}>
+                <div className="otp-empty">
+                  <Search size={21} aria-hidden />
+                  <p>No champions found</p>
+                  <span>Try a different champion name.</span>
+                </div>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

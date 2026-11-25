@@ -1,3 +1,6 @@
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowUpRight, Swords } from "lucide-react";
 import ChampionTable, { type ChampionListRow } from "./components/ChampionTable";
 import SetupNotice from "./components/SetupNotice";
 import { getChampionStats, getStaticData, isConfigured, winRate } from "./lib/data";
@@ -20,28 +23,65 @@ export default async function OtpHome() {
       oneTricks: s.one_tricks,
     }];
   });
+  const featured = rows[0];
+  const splashChampion = dd.championsBySlug.get(featured?.slug ?? "ahri");
   const totalGames = stats.reduce((n, s) => n + s.games, 0);
   const totalOtps = stats.reduce((n, s) => n + s.one_tricks, 0);
+  const latestPatch = stats[0]?.latest_patch;
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold tracking-tight">Builds from players who only play one champion</h1>
-      <p className="mt-2 text-zinc-400 max-w-2xl">
-        Every number here comes from Master, Grandmaster and Challenger solo queue players whose recent games
-        are mostly on a single champion. Builds, runes and skill orders are what they actually do on their
-        main.
-      </p>
-      <p className="mt-4 text-sm text-zinc-500">
-        {totalOtps.toLocaleString()} one-tricks · {totalGames.toLocaleString()} games · patch{" "}
-        {stats[0]?.latest_patch ?? "n/a"} · updated hourly
-      </p>
-      <div className="mt-8">
+    <>
+      <section className="otp-hero otp-panel" aria-labelledby="otp-title">
+        <div className="otp-hero-main">
+          {splashChampion && (
+            <div className="otp-hero-art">
+              <Image src={dd.championSplash(splashChampion)} alt="" fill unoptimized preload sizes="(max-width: 700px) 100vw, 850px" />
+            </div>
+          )}
+          <div className="otp-hero-copy">
+            <div className="otp-eyebrow"><Swords size={15} aria-hidden /> League of Legends · Master+ solo queue</div>
+            <h1 id="otp-title" className="otp-title">How <span className="whitespace-nowrap">one-tricks</span><br className="hidden sm:block" /> <em>build.</em></h1>
+            <p className="max-w-md text-sm leading-relaxed sm:text-base">
+              Explore builds, runes and lane matchups from Master, Grandmaster and Challenger players who main one champion.
+            </p>
+          </div>
+          {featured && (
+            <Link href={`/otp/${featured.slug}`} className="otp-featured">
+              <Image src={featured.icon} alt="" width={36} height={36} unoptimized className="otp-portrait" />
+              <span>
+                <span className="block text-xs text-[var(--otp-muted)]">Most tracked games</span>
+                <strong className="block text-sm font-semibold">{featured.name}</strong>
+              </span>
+              <ArrowUpRight size={16} aria-hidden />
+            </Link>
+          )}
+        </div>
+        <dl className="otp-hero-stats">
+          <div><dt>Tracked games</dt><dd>{totalGames.toLocaleString()}</dd></div>
+          <div><dt>One-tricks</dt><dd>{totalOtps.toLocaleString()}</dd></div>
+          <div><dt>Regions</dt><dd>NA · EUW · KR</dd></div>
+          <div><dt>Latest patch</dt><dd>{latestPatch ?? "—"}</dd></div>
+        </dl>
+      </section>
+
+      <section className="otp-section" aria-labelledby="champion-directory">
+        <div className="otp-section-heading">
+          <div>
+            <h2 id="champion-directory">Champion directory</h2>
+            <p>Find a champion to see what their one-tricks play.</p>
+          </div>
+          <span className="otp-update"><span aria-hidden /> Updated hourly</span>
+        </div>
         {rows.length ? (
           <ChampionTable rows={rows} />
         ) : (
-          <p className="text-zinc-400">No games collected yet. The collector fills this in over the first few runs.</p>
+          <div className="otp-panel otp-empty">
+            <Swords size={23} aria-hidden />
+            <p>No games collected yet</p>
+            <span>Champions will appear here as games are collected.</span>
+          </div>
         )}
-      </div>
-    </div>
+      </section>
+    </>
   );
 }

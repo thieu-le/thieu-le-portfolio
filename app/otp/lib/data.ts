@@ -142,6 +142,7 @@ export async function getStaticData() {
     itemName: (id: number) => items.data[String(id)]?.name ?? `Item ${id}`,
     rune: (id: number) => runes.get(id),
     championIcon: (c: DDChampion) => `${DDRAGON}/cdn/${version}/img/champion/${c.id}.png`,
+    championSplash: (c: DDChampion) => `${DDRAGON}/cdn/img/champion/splash/${c.id}_0.jpg`,
     itemIcon: (id: number) => `${DDRAGON}/cdn/${version}/img/item/${id}.png`,
     runeIcon: (r: DDRune) => `${DDRAGON}/cdn/img/${r.icon}`,
   };

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowUpRight, Crosshair } from "lucide-react";
+import "./otp.css";
 
 export const metadata: Metadata = {
   title: "One-Trick Stats | Masters+ builds and win rates",
@@ -9,28 +11,29 @@ export const metadata: Metadata = {
 
 export default function OtpLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
-          <Link href="/otp" className="font-semibold tracking-tight text-lg">
-            One-Trick <span className="text-amber-400">Stats</span>
+    <div className="otp flex min-h-screen flex-col font-sans">
+      <header className="otp-header">
+        <nav aria-label="One-Trick Stats" className="otp-wrap flex min-h-17 items-center justify-between gap-4">
+          <Link href="/otp" className="flex items-center gap-3 rounded-md font-semibold tracking-tight">
+            <span className="otp-mark"><Crosshair size={20} aria-hidden /></span>
+            One-Trick Stats
           </Link>
-          <span className="text-xs text-zinc-400">Master+ · NA · EUW · KR · no ads</span>
-        </div>
+          <Link href="/" className="otp-quiet-link">
+            Portfolio <ArrowUpRight size={15} aria-hidden />
+          </Link>
+        </nav>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">{children}</main>
+      <main className="otp-wrap flex-1 py-6 sm:py-9">{children}</main>
 
-      <footer className="border-t border-zinc-800 mt-16">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 text-xs text-zinc-500 space-y-2">
-          <p>
+      <footer className="otp-footer mt-14">
+        <div className="otp-wrap flex flex-wrap justify-between gap-x-10 gap-y-4 py-7 text-xs leading-relaxed">
+          <p className="max-w-2xl">
             One-Trick Stats isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the views or opinions of
             Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games,
             and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
           </p>
-          <p>
-            Built by <Link href="/" className="underline hover:text-zinc-300">Thieu Le</Link>.
-          </p>
+          <p>Built by <Link href="/" className="otp-quiet-link inline-flex">Thieu Le</Link>.</p>
         </div>
       </footer>
     </div>
