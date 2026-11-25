@@ -87,12 +87,18 @@ export const config = Object.freeze({
   // covered, known one-tricks are only refreshed with leftover time.
   championTarget: num('OTP_CHAMPION_TARGET', 5),
   // How far back to pull a newly found one-trick's games.
-  backfillDays: num('OTP_BACKFILL_DAYS', 28),
+  // Capped at OTP_RAW_DAYS: older games would be rolled up straight away, and
+  // never fetching games older than the raw window is what keeps rollups from
+  // double counting.
+  backfillDays: num('OTP_BACKFILL_DAYS', 14),
   // Minimum gap between new-game checks for a known one-trick.
   updateHours: num('OTP_UPDATE_HOURS', 24),
 
   fetchTimelines: optional('OTP_FETCH_TIMELINES', 'true') === 'true',
-  retentionDays: num('OTP_RETENTION_DAYS', 45),
+  // Per-game rows are kept this long, then folded into per-patch rollup tables
+  // (otp_rollup_games in Postgres). Rollups keep the newest OTP_KEEP_PATCHES patches.
+  rawDays: num('OTP_RAW_DAYS', 14),
+  keepPatches: num('OTP_KEEP_PATCHES', 6),
 
   // Stop starting new work after this long so a scheduled run never overlaps
   // the next one. In-flight requests still finish.

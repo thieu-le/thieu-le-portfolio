@@ -56,6 +56,13 @@ export async function select<T>(table: string, query: string): Promise<T[]> {
   }
 }
 
+/** Call a Postgres function exposed by PostgREST. */
+export async function rpc<T>(fn: string, args: object): Promise<T> {
+  const res = await fetch(`${base}/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args) });
+  await check(res, `rpc ${fn}`);
+  return (await res.json()) as T;
+}
+
 export async function remove(table: string, filter: Record<string, string>): Promise<void> {
   const url = new URL(`${base}/${table}`);
   for (const [k, v] of Object.entries(filter)) url.searchParams.set(k, v);

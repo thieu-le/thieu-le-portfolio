@@ -22,7 +22,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { config, type Platform } from './config.ts';
 import { CoverageQueue } from './coverage.ts';
-import { remove, select, update, upsert } from './db.ts';
+import { rpc, select, update, upsert } from './db.ts';
 import { loadItemCatalog, type ItemCatalog } from './dataDragon.ts';
 import { findLaneOpponent, findParticipant, fromTimeline, isRemake, toGameRow, type GameRow } from './extract.ts';
 import { log } from './log.ts';
@@ -75,7 +75,8 @@ async function fetchMatch(platform: Platform, matchId: string): Promise<Match | 
 async function buildRow(platform: Platform, match: Match, puuid: string, items: ItemCatalog): Promise<GameRow | null> {
   const p = findParticipant(match, puuid);
   if (!p || isRemake(match, p)) return null;
-  if (Date.parse(new Date(match.info.gameStartTimestamp).toISOString()) < daysAgo(config.retentionDays).getTime()) {
+  // Never store games older than the raw window: they may already be rolled up.
+  if (match.info.gameStartTimestamp < daysAgo(config.rawDays).getTime()) {
     return null;
   }
   let derived = null;
@@ -221,7 +222,7 @@ async function classify(platform: Platform, puuid: string, items: ItemCatalog): 
     last_classified_at: classifiedAt,
   });
 
-  const backfillIds = await getSoloMatchIdsSince(platform, puuid, daysAgo(Math.min(config.backfillDays, config.retentionDays)));
+  const backfillIds = await getSoloMatchIdsSince(platform, puuid, daysAgo(Math.min(config.backfillDays, config.rawDays)));
   const allIds = [...new Set([...ids, ...backfillIds])];
   const stored = await storeMainGames(platform, puuid, main, allIds, items, sample);
   // Only advance the checkpoint if the whole backfill made it in.
@@ -273,7 +274,7 @@ async function refreshOneTricks(platform: Platform, items: ItemCatalog): Promise
     const checkedAt = nowIso();
     const since = new Date(Math.max(
       p.last_match_check_at ? Date.parse(p.last_match_check_at) : 0,
-      daysAgo(config.retentionDays).getTime(),
+      daysAgo(config.rawDays).getTime(),
     ));
     const ids = await getSoloMatchIdsSince(platform, p.puuid, since);
     stored += await storeMainGames(platform, p.puuid, p.main_champion_id, ids, items);
@@ -355,7 +356,12 @@ async function main(): Promise<void> {
     if (r.status === 'rejected') log.error(`[${config.platforms[i]}] ${(r.reason as Error)?.stack ?? r.reason}`);
   });
 
-  await remove('otp_games', { game_start: `lt.${daysAgoIso(config.retentionDays)}` });
+  // Fold games older than the raw window into the per-patch rollups.
+  const rolled = await rpc<number>('otp_rollup_games', {
+    cutoff: daysAgoIso(config.rawDays),
+    keep_patches: config.keepPatches,
+  });
+  log.info(`Rolled up ${rolled} games older than ${config.rawDays} days`);
 
   const covered = [...counts.values()].filter((n) => n >= config.championTarget).length;
   const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1);

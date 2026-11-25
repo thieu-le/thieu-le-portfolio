@@ -23,13 +23,16 @@ lanes also run in parallel because they use different hosts:
 3. **Coverage**: classify candidates for the champions with the fewest known one-tricks
    first (shared across regions), best LP then most games within a champion. **One-trick**
    means at least 60% of their last 20 solo games (12+ non-remakes) on one champion. A new
-   one-trick gets the last 28 days of games on their main backfilled right away.
+   one-trick gets the last 14 days of games on their main backfilled right away.
 4. **Refresh** known one-tricks not checked in 24 hours. Misses are never lost: the next
-   check pages through everything since the last one.
+   check pages through everything since the last one (up to the 14-day raw window).
 5. **Depth**: classify remaining candidates for champions that already have 5 one-tricks.
 6. **Riot IDs** for display, refreshed weekly.
 
-Then games older than 45 days are pruned to stay under the 500 MB free database.
+Then games older than 14 days are folded into per-patch rollup tables (wins, games, lane
+results per champion, matchup, build, runes and skill max) and deleted, and rollups older
+than the newest 6 patches are dropped. The pages only show summary numbers, so this keeps
+months of history inside the 500 MB free database.
 Runs are hourly, stop starting new work after 50 minutes, and resume where they left off.
 
 ## Setup
@@ -69,8 +72,9 @@ npm run otp:collect
 | `OTP_MASTERY_PREFILTER` | `0.3` | Top champion's share of top-10 mastery needed before spending match calls |
 | `OTP_RECLASSIFY_DAYS` | `7` | How often players are re-evaluated |
 | `OTP_CHAMPION_TARGET` | `5` | One-tricks per champion before it loses priority |
-| `OTP_BACKFILL_DAYS` | `28` | History pulled for a newly found one-trick |
+| `OTP_BACKFILL_DAYS` | `14` | History pulled for a newly found one-trick (capped at `OTP_RAW_DAYS`) |
 | `OTP_UPDATE_HOURS` | `24` | Minimum gap between new-game checks per one-trick |
 | `OTP_FETCH_TIMELINES` | `true` | Timelines give build order, boots and skill order (doubles match calls) |
-| `OTP_RETENTION_DAYS` | `45` | Games older than this are deleted |
+| `OTP_RAW_DAYS` | `14` | Per-game rows kept this long, then folded into per-patch rollups |
+| `OTP_KEEP_PATCHES` | `6` | Patches of rolled-up history to keep (about 3 months) |
 | `OTP_MAX_RUNTIME_MINUTES` | `50` | Stop starting new work after this long |
