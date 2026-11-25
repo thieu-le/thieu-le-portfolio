@@ -1,33 +1,44 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight, Swords } from "lucide-react";
 import ChampionTable, { type ChampionListRow } from "./components/ChampionTable";
 import SetupNotice from "./components/SetupNotice";
-import { getChampionStats, getStaticData, isConfigured, winRate } from "./lib/data";
+import { getChampionOverview, getStaticData, isConfigured } from "./lib/data";
 
 export const revalidate = 3600;
 
 export default async function OtpHome() {
   if (!isConfigured()) return <SetupNotice />;
 
-  const [stats, dd] = await Promise.all([getChampionStats(), getStaticData()]);
-  const rows: ChampionListRow[] = stats.flatMap((s) => {
-    const c = dd.championsByKey.get(s.champion_id);
-    if (!c) return [];
-    return [{
-      slug: c.id.toLowerCase(),
-      name: c.name,
-      icon: dd.championIcon(c),
-      games: s.games,
-      winRate: winRate(s),
-      oneTricks: s.one_tricks,
-    }];
-  });
-  const featured = rows[0];
+  const [{ stats, oneTricks }, dd] = await Promise.all([getChampionOverview(), getStaticData()]);
+
+  // One row per champion, carrying its per-region, per-lane numbers so the
+  // table can filter in the browser without another request.
+  const byChampion = new Map<number, ChampionListRow>();
+  for (const s of stats) {
+    let row = byChampion.get(s.champion_id);
+    if (!row) {
+      const c = dd.championsByKey.get(s.champion_id);
+      if (!c) continue;
+      row = { slug: c.id.toLowerCase(), name: c.name, icon: dd.championIcon(c), cells: [], oneTricks: {} };
+      byChampion.set(s.champion_id, row);
+    }
+    row.cells.push([s.platform, s.position, s.games, s.wins]);
+  }
+  for (const o of oneTricks) {
+    const row = byChampion.get(o.champion_id);
+    if (row) row.oneTricks[o.platform] = o.one_tricks;
+  }
+  const rows = [...byChampion.values()];
+  const gamesOf = (r: ChampionListRow) => r.cells.reduce((n, c) => n + c[2], 0);
+  const featured = rows.toSorted((a, b) => gamesOf(b) - gamesOf(a))[0];
   const splashChampion = dd.championsBySlug.get(featured?.slug ?? "ahri");
   const totalGames = stats.reduce((n, s) => n + s.games, 0);
-  const totalOtps = stats.reduce((n, s) => n + s.one_tricks, 0);
-  const latestPatch = stats[0]?.latest_patch;
+  const totalOtps = oneTricks.reduce((n, o) => n + o.one_tricks, 0);
+  const latestPatch = stats
+    .map((s) => s.latest_patch)
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0];
 
   return (
     <>
@@ -73,7 +84,9 @@ export default async function OtpHome() {
           <span className="otp-update"><span aria-hidden /> Updated hourly</span>
         </div>
         {rows.length ? (
-          <ChampionTable rows={rows} />
+          <Suspense fallback={<div className="otp-panel min-h-80" />}>
+            <ChampionTable rows={rows} />
+          </Suspense>
         ) : (
           <div className="otp-panel otp-empty">
             <Swords size={23} aria-hidden />

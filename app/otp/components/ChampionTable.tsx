@@ -1,31 +1,58 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowDown, ChevronRight, ChevronsUpDown, Search, X } from "lucide-react";
+import { filterSearch, LANES, parseLane, parseRegions, REGIONS, toggleRegion } from "../lib/filters";
 
 export type ChampionListRow = {
   slug: string;
   name: string;
   icon: string;
-  games: number;
-  winRate: number;
-  oneTricks: number;
+  /** [platform, position, games, wins] */
+  cells: [string, string, number, number][];
+  /** One-tricks per platform. */
+  oneTricks: Record<string, number>;
 };
 
 type SortKey = "games" | "winRate" | "oneTricks";
+type Shown = { slug: string; name: string; icon: string; games: number; winRate: number; oneTricks: number };
 
 export default function ChampionTable({ rows }: { rows: ChampionListRow[] }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("games");
+  // Filters live in the URL so they survive a refresh and carry to champion
+  // pages. Next keeps useSearchParams in sync with history.replaceState.
+  const searchParams = useSearchParams();
+  const platforms = useMemo(() => parseRegions(searchParams.get("region")), [searchParams]);
+  const lane = parseLane(searchParams.get("lane"));
+
+  function applyFilters(nextPlatforms: string[], nextLane: string | undefined) {
+    window.history.replaceState(null, "", `${window.location.pathname}${filterSearch(nextPlatforms, nextLane)}`);
+  }
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows
-      .filter((r) => r.name.toLowerCase().includes(q))
-      .sort((a, b) => b[sort] - a[sort] || a.name.localeCompare(b.name));
-  }, [rows, query, sort]);
+    const out: Shown[] = [];
+    for (const r of rows) {
+      if (!r.name.toLowerCase().includes(q)) continue;
+      let games = 0;
+      let wins = 0;
+      for (const [platform, position, g, w] of r.cells) {
+        if (!platforms.includes(platform) || (lane && position !== lane)) continue;
+        games += g;
+        wins += w;
+      }
+      if (!games) continue;
+      const oneTricks = platforms.reduce((n, p) => n + (r.oneTricks[p] ?? 0), 0);
+      out.push({ slug: r.slug, name: r.name, icon: r.icon, games, winRate: (100 * wins) / games, oneTricks });
+    }
+    return out.sort((a, b) => b[sort] - a[sort] || a.name.localeCompare(b.name));
+  }, [rows, query, sort, platforms, lane]);
+
+  const linkSearch = filterSearch(platforms, lane);
 
   const header = (key: SortKey, label: string) => (
     <th scope="col" aria-sort={sort === key ? "descending" : undefined}>
@@ -44,6 +71,26 @@ export default function ChampionTable({ rows }: { rows: ChampionListRow[] }) {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search champions" aria-label="Search champions" />
           {query && <button type="button" aria-label="Clear search" onClick={() => setQuery("")}><X size={16} aria-hidden /></button>}
         </div>
+        <div className="otp-sort-options" role="group" aria-label="Lane">
+          <button type="button" aria-pressed={!lane} onClick={() => applyFilters(platforms, undefined)}>All lanes</button>
+          {LANES.map((l) => (
+            <button key={l.position} type="button" aria-pressed={lane === l.position} onClick={() => applyFilters(platforms, l.position)}>
+              {l.label}
+            </button>
+          ))}
+        </div>
+        <div className="otp-sort-options" role="group" aria-label="Regions">
+          {REGIONS.map((r) => (
+            <button
+              key={r.platform}
+              type="button"
+              aria-pressed={platforms.includes(r.platform)}
+              onClick={() => applyFilters(toggleRegion(platforms, r.platform), lane)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
         <span aria-live="polite" className="otp-table-count">
           {shown.length.toLocaleString()} {shown.length === 1 ? "champion" : "champions"}
         </span>
@@ -61,7 +108,7 @@ export default function ChampionTable({ rows }: { rows: ChampionListRow[] }) {
           {shown.map((r) => (
             <tr key={r.slug} className="otp-link-row">
               <th scope="row">
-                <Link href={`/otp/${r.slug}`} prefetch={false} className="otp-row-link">
+                <Link href={`/otp/${r.slug}${linkSearch}`} prefetch={false} className="otp-row-link">
                   <Image src={r.icon} alt="" width={40} height={40} unoptimized className="otp-portrait" />
                   <span>{r.name}</span>
                 </Link>
@@ -80,7 +127,7 @@ export default function ChampionTable({ rows }: { rows: ChampionListRow[] }) {
                 <div className="otp-empty">
                   <Search size={21} aria-hidden />
                   <p>No champions found</p>
-                  <span>Try a different champion name.</span>
+                  <span>Try another name, lane or region.</span>
                 </div>
               </td>
             </tr>

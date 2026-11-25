@@ -13,12 +13,14 @@ import {
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import FilterBar from "../components/FilterBar";
 import MatchupList, { type MatchupRow } from "../components/MatchupList";
 import SetupNotice from "../components/SetupNotice";
 import { Rate, signed } from "../components/StatDisplay";
 import {
-  adjustedWinRate,
+  adjustedLaneLead,
   getChampionDetail,
+  getChampionSummary,
   getMatchupDetail,
   getMatchups,
   getStaticData,
@@ -33,12 +35,13 @@ import {
   type SkillStat,
   type StatRow,
 } from "../lib/data";
+import { filterSearch, laneLabel, LANES, parseLane, parseRegions, REGIONS } from "../lib/filters";
 
 export const revalidate = 3600;
 
 type Props = {
   params: Promise<{ champion: string }>;
-  searchParams: Promise<{ vs?: string | string[] }>;
+  searchParams: Promise<{ vs?: string | string[]; region?: string | string[]; lane?: string | string[] }>;
 };
 
 type StaticData = Awaited<ReturnType<typeof getStaticData>>;
@@ -222,22 +225,40 @@ function RuneCard({ rows, dd, usual, nested }: { rows: RuneStat[]; dd: StaticDat
 export default async function ChampionPage({ params, searchParams }: Props) {
   if (!isConfigured()) return <SetupNotice />;
 
-  const [{ champion: slug }, { vs }] = await Promise.all([params, searchParams]);
+  const [{ champion: slug }, query] = await Promise.all([params, searchParams]);
   const dd = await getStaticData();
   const champ = dd.championsBySlug.get(slug.toLowerCase());
   if (!champ) notFound();
   const championId = Number(champ.key);
+  const champSlug = champ.id.toLowerCase();
+  const basePath = `/otp/${champSlug}`;
 
-  const [{ champion, builds, boots, runes, skills, players }, matchups] = await Promise.all([
-    getChampionDetail(championId),
-    getMatchups(championId),
+  // Regions come from the URL; the lane defaults to where this champion's
+  // one-tricks play most in those regions.
+  const platforms = parseRegions(query.region);
+  const summary = await getChampionSummary(championId);
+  const inRegions = summary.stats.filter((s) => platforms.includes(s.platform));
+  const laneGames = new Map<string, number>();
+  for (const s of inRegions) laneGames.set(s.position, (laneGames.get(s.position) ?? 0) + s.games);
+  const mainLane = LANES.map((l) => l.position).sort((a, b) => (laneGames.get(b) ?? 0) - (laneGames.get(a) ?? 0))[0];
+  const position = parseLane(query.lane) ?? mainLane;
+  const laneRows = inRegions.filter((s) => s.position === position);
+  const champion: StatRow | null = laneRows.length
+    ? { games: laneRows.reduce((n, s) => n + s.games, 0), wins: laneRows.reduce((n, s) => n + s.wins, 0) }
+    : null;
+  const oneTricks = summary.oneTricks.filter((o) => platforms.includes(o.platform)).reduce((n, o) => n + o.one_tricks, 0);
+  const regionLabel = REGIONS.filter((r) => platforms.includes(r.platform)).map((r) => r.label).join(" · ");
+
+  const [{ builds, boots, runes, skills, players }, matchups] = await Promise.all([
+    getChampionDetail(championId, platforms, position),
+    getMatchups(championId, platforms, position),
   ]);
 
-  const opponent = typeof vs === "string" ? dd.championsBySlug.get(vs.toLowerCase()) : undefined;
+  const vs = typeof query.vs === "string" ? query.vs : undefined;
+  const opponent = vs ? dd.championsBySlug.get(vs.toLowerCase()) : undefined;
   const opponentStats = opponent ? matchups.find((m) => m.opponent_champion_id === Number(opponent.key)) : undefined;
-  const matchupDetail = opponent ? await getMatchupDetail(championId, Number(opponent.key)) : null;
+  const matchupDetail = opponent ? await getMatchupDetail(championId, Number(opponent.key), platforms, position) : null;
 
-  const baseline = champion ? winRate(champion) : 50;
   const matchupRows: MatchupRow[] = matchups.flatMap((m) => {
     const c = dd.championsByKey.get(m.opponent_champion_id);
     if (!c) return [];
@@ -247,8 +268,8 @@ export default async function ChampionPage({ params, searchParams }: Props) {
       icon: dd.championIcon(c),
       games: m.games,
       winRate: winRate(m),
-      adjustedWinRate: adjustedWinRate(m, baseline),
       laneWinRate: laneWinRate(m),
+      laneLead: adjustedLaneLead(m),
       goldDiff15: m.avg_gold_diff_15,
       xpDiff15: m.avg_xp_diff_15,
     }];
@@ -256,7 +277,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <Link href="/otp" className="otp-quiet-link mb-4"><ArrowLeft size={16} aria-hidden /> All champions</Link>
+      <Link href={`/otp${filterSearch(platforms)}`} className="otp-quiet-link mb-4"><ArrowLeft size={16} aria-hidden /> All champions</Link>
 
       <section aria-labelledby="champion-name" className="otp-panel otp-champion-banner">
         <div className="otp-hero-art">
@@ -271,17 +292,24 @@ export default async function ChampionPage({ params, searchParams }: Props) {
         </div>
         {champion && (
           <dl className="mt-5 grid max-w-lg grid-cols-3 gap-2 sm:mt-7">
-            <Metric label="Win rate" value={<GameRate stat={champion} />} />
+            <Metric label={`${laneLabel(position)} win rate`} value={<GameRate stat={champion} />} />
             <Metric label="Games" value={champion.games.toLocaleString()} />
-            <Metric label="One-tricks" value={champion.one_tricks.toLocaleString()} />
+            <Metric label="One-tricks" value={oneTricks.toLocaleString()} />
           </dl>
         )}
+        <FilterBar
+          basePath={basePath}
+          platforms={platforms}
+          position={position}
+          laneGames={laneGames}
+          keep={vs ? { vs } : {}}
+        />
       </section>
 
       {!champion ? (
         <div className="otp-panel otp-empty mt-5">
           <Users size={23} aria-hidden />
-          <p>No Master+ one-tricks found for {champ.name} yet.</p>
+          <p>No {laneLabel(position).toLowerCase()} games from {champ.name} one-tricks in {regionLabel} yet.</p>
         </div>
       ) : (
         <>
@@ -289,7 +317,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
             <div className="otp-section-heading">
               <div>
                 <h2 id="usual-setup">Most-played setup</h2>
-                <p>The skill order, items and runes {champ.name} one-tricks use most.</p>
+                <p>The skill order, items and runes {champ.name} one-tricks use most in {laneLabel(position).toLowerCase()} · {regionLabel}.</p>
               </div>
             </div>
             <div className="grid items-start gap-3 md:grid-cols-3">
@@ -303,7 +331,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
             <div className="otp-section-heading">
               <div>
                 <h2 id="matchup-title">Lane matchups</h2>
-                <p>Choose an opponent to see how {champ.name} one-tricks adapt their setup.</p>
+                <p>{laneLabel(position)} lane opponents. Choose one to see how {champ.name} one-tricks adapt their setup.</p>
               </div>
             </div>
             <div className={matchupRows.length > 0 ? "otp-matchups" : ""}>
@@ -311,7 +339,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
                 <MatchupList
                   rows={matchupRows}
                   selected={opponent ? opponent.id.toLowerCase() : null}
-                  baseHref={`/otp/${champ.id.toLowerCase()}`}
+                  baseHref={`${basePath}${filterSearch(platforms, position)}`}
                   minGames={MIN_WR_GAMES}
                 />
               )}

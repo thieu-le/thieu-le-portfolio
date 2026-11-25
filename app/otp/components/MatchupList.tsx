@@ -12,9 +12,9 @@ export type MatchupRow = {
   icon: string;
   games: number;
   winRate: number;
-  /** Win rate shrunk toward the champion's average; used for sorting. */
-  adjustedWinRate: number;
   laneWinRate: number | null;
+  /** Gold + XP lead at 15:00, shrunk toward 0 for small samples; used for sorting. */
+  laneLead: number | null;
   goldDiff15: number | null;
   xpDiff15: number | null;
 };
@@ -61,8 +61,12 @@ export default function MatchupList({
     const q = query.trim().toLowerCase();
     const list = rows.filter((r) => r.name.toLowerCase().includes(q));
     if (sort === "games") return list.sort((a, b) => b.games - a.games);
+    // Hardest = biggest gold + XP deficit at 15:00. Matchups without lane data go last.
     const dir = sort === "hardest" ? 1 : -1;
-    return list.sort((a, b) => dir * (a.adjustedWinRate - b.adjustedWinRate));
+    return list.sort((a, b) => {
+      if (a.laneLead === null || b.laneLead === null) return (a.laneLead === null ? 1 : 0) - (b.laneLead === null ? 1 : 0);
+      return dir * (a.laneLead - b.laneLead) || b.games - a.games;
+    });
   }, [rows, query, sort]);
 
   return (
@@ -102,7 +106,7 @@ export default function MatchupList({
                 <tr key={r.slug} className="otp-link-row" data-selected={active}>
                   <th scope="row">
                     <Link
-                      href={`${baseHref}?vs=${r.slug}#matchup`}
+                      href={`${baseHref}${baseHref.includes("?") ? "&" : "?"}vs=${r.slug}#matchup`}
                       prefetch={false}
                       scroll={false}
                       aria-current={active ? "true" : undefined}
@@ -147,8 +151,8 @@ export default function MatchupList({
         </table>
       </div>
       <p className="border-t border-[var(--otp-line)] px-4 py-3 text-xs leading-relaxed text-[var(--otp-muted)]">
-        * Under {minGames} games, win rates are muted and adjusted toward the overall rate for sorting.
-        At 15 minutes, a lead in both gold and XP counts as a lane win. Mixed leads count as half.
+        * Under {minGames} games, win rates are muted. Hardest and easiest sort by the combined gold and XP
+        lead at 15 minutes, pulled toward even for small samples. A lead in both counts as a lane win; mixed leads count as half.
       </p>
     </div>
   );

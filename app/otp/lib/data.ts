@@ -7,7 +7,9 @@ const REVALIDATE = 3600;
 const DDRAGON = "https://ddragon.leagueoflegends.com";
 
 export type StatRow = { games: number; wins: number };
-export type ChampionStat = StatRow & { champion_id: number; one_tricks: number; latest_patch: string };
+/** One row per champion x region x lane. */
+export type ChampionStat = StatRow & { champion_id: number; platform: string; position: string; latest_patch: string };
+export type OneTrickCount = { champion_id: number; platform: string; one_tricks: number };
 export type BuildStat = StatRow & { core_items: number[] };
 export type BootsStat = StatRow & { boots: number };
 export type RuneStat = StatRow & { keystone: number; primary_style: number; sub_style: number; perks: number[] };
@@ -43,20 +45,70 @@ async function view<T>(name: string, query: string): Promise<T[]> {
   return res.json();
 }
 
-export const getChampionStats = () =>
-  view<ChampionStat>("otp_champion_stats", "select=*&order=games.desc");
+/** Like `view`, but pages past PostgREST's 1000-row cap. `query` needs a stable order. */
+async function viewAll<T>(name: string, query: string): Promise<T[]> {
+  const out: T[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const rows = await view<T>(name, `${query}&limit=1000&offset=${offset}`);
+    out.push(...rows);
+    if (rows.length < 1000) return out;
+  }
+}
 
-export async function getChampionDetail(championId: number) {
-  const c = `champion_id=eq.${championId}`;
-  const [champion, builds, boots, runes, skills, players] = await Promise.all([
-    view<ChampionStat>("otp_champion_stats", `select=*&${c}`),
-    view<BuildStat>("otp_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=8`),
-    view<BootsStat>("otp_boots_stats", `select=boots,games,wins&${c}&order=games.desc&limit=4`),
-    view<RuneStat>("otp_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=5`),
-    view<SkillStat>("otp_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=3`),
-    view<PlayerStat>("otp_player_stats", `select=*&${c}&order=games.desc&limit=25`),
+/** Sums rows that share a key (the same build across regions), most games first. */
+export function merge<T extends StatRow>(rows: T[], key: (r: T) => string, limit = Infinity): T[] {
+  const byKey = new Map<string, T>();
+  for (const r of rows) {
+    const k = key(r);
+    const seen = byKey.get(k);
+    if (seen) {
+      seen.games += r.games;
+      seen.wins += r.wins;
+    } else {
+      byKey.set(k, { ...r });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.games - a.games).slice(0, limit);
+}
+
+const scope = (championId: number, platforms: string[], position: string) =>
+  `champion_id=eq.${championId}&platform=in.(${platforms.join(",")})&position=eq.${position}`;
+
+/** Every champion x region x lane row, plus one-trick counts per region. Filtered on the page. */
+export async function getChampionOverview() {
+  const [stats, oneTricks] = await Promise.all([
+    viewAll<ChampionStat>("otp_champion_stats", "select=*&order=champion_id,platform,position"),
+    viewAll<OneTrickCount>("otp_champion_one_tricks", "select=*&order=champion_id,platform"),
   ]);
-  return { champion: champion[0] ?? null, builds, boots, runes, skills, players };
+  return { stats, oneTricks };
+}
+
+/** One champion's rows for every region and lane: picks the lane tabs and the default lane. */
+export async function getChampionSummary(championId: number) {
+  const c = `champion_id=eq.${championId}`;
+  const [stats, oneTricks] = await Promise.all([
+    view<ChampionStat>("otp_champion_stats", `select=*&${c}`),
+    view<OneTrickCount>("otp_champion_one_tricks", `select=*&${c}`),
+  ]);
+  return { stats, oneTricks };
+}
+
+export async function getChampionDetail(championId: number, platforms: string[], position: string) {
+  const c = scope(championId, platforms, position);
+  const [builds, boots, runes, skills, players] = await Promise.all([
+    view<BuildStat>("otp_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=300`),
+    view<BootsStat>("otp_boots_stats", `select=boots,games,wins&${c}&order=games.desc&limit=60`),
+    view<RuneStat>("otp_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=300`),
+    view<SkillStat>("otp_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=60`),
+    view<PlayerStat>("otp_player_stats", `select=puuid,platform,game_name,tag_line,tier,league_points,games,wins&${c}&order=games.desc&limit=300`),
+  ]);
+  return {
+    builds: merge(builds, (b) => b.core_items.join("-"), 8),
+    boots: merge(boots, (b) => String(b.boots), 4),
+    runes: merge(runes, (r) => `${r.primary_style}-${r.sub_style}-${r.perks.join("-")}`, 5),
+    skills: merge(skills, (s) => s.skill_max, 3),
+    players: merge(players, (p) => p.puuid, 25),
+  };
 }
 
 export type MatchupStat = StatRow & {
@@ -64,21 +116,51 @@ export type MatchupStat = StatRow & {
   lane_games: number;
   lane_wins: number;
   lane_losses: number;
+  gold_diff_15_sum: number;
+  xp_diff_15_sum: number;
+  /** Average leads at 15:00 over games with lane data. */
   avg_gold_diff_15: number | null;
   avg_xp_diff_15: number | null;
 };
 
-export const getMatchups = (championId: number) =>
-  view<MatchupStat>("otp_matchup_stats", `select=*&champion_id=eq.${championId}&order=games.desc`);
+export async function getMatchups(championId: number, platforms: string[], position: string): Promise<MatchupStat[]> {
+  const rows = await view<MatchupStat>("otp_matchup_stats", `select=*&${scope(championId, platforms, position)}&limit=1000`);
+  const byOpponent = new Map<number, MatchupStat>();
+  for (const r of rows) {
+    const m = byOpponent.get(r.opponent_champion_id);
+    if (!m) {
+      byOpponent.set(r.opponent_champion_id, { ...r, gold_diff_15_sum: Number(r.gold_diff_15_sum), xp_diff_15_sum: Number(r.xp_diff_15_sum) });
+      continue;
+    }
+    m.games += r.games;
+    m.wins += r.wins;
+    m.lane_games += r.lane_games;
+    m.lane_wins += r.lane_wins;
+    m.lane_losses += r.lane_losses;
+    m.gold_diff_15_sum += Number(r.gold_diff_15_sum);
+    m.xp_diff_15_sum += Number(r.xp_diff_15_sum);
+  }
+  return [...byOpponent.values()]
+    .map((m) => ({
+      ...m,
+      avg_gold_diff_15: m.lane_games ? Math.round(m.gold_diff_15_sum / m.lane_games) : null,
+      avg_xp_diff_15: m.lane_games ? Math.round(m.xp_diff_15_sum / m.lane_games) : null,
+    }))
+    .sort((a, b) => b.games - a.games);
+}
 
-export async function getMatchupDetail(championId: number, opponentId: number) {
-  const c = `champion_id=eq.${championId}&opponent_champion_id=eq.${opponentId}`;
+export async function getMatchupDetail(championId: number, opponentId: number, platforms: string[], position: string) {
+  const c = `${scope(championId, platforms, position)}&opponent_champion_id=eq.${opponentId}`;
   const [builds, runes, skills] = await Promise.all([
-    view<BuildStat>("otp_matchup_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=5`),
-    view<RuneStat>("otp_matchup_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=4`),
-    view<SkillStat>("otp_matchup_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=3`),
+    view<BuildStat>("otp_matchup_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=200`),
+    view<RuneStat>("otp_matchup_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=200`),
+    view<SkillStat>("otp_matchup_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=60`),
   ]);
-  return { builds, runes, skills };
+  return {
+    builds: merge(builds, (b) => b.core_items.join("-"), 5),
+    runes: merge(runes, (r) => `${r.primary_style}-${r.sub_style}-${r.perks.join("-")}`, 4),
+    skills: merge(skills, (s) => s.skill_max, 3),
+  };
 }
 
 /**
@@ -100,6 +182,15 @@ export const MIN_WR_GAMES = 20;
  */
 export function adjustedWinRate(s: StatRow, baseline: number, weight = MIN_WR_GAMES): number {
   return (s.wins + (weight * baseline) / 100) / (s.games + weight) * 100;
+}
+
+/**
+ * Combined gold + XP lead at 15:00, pulled toward 0 by `weight` phantom even
+ * games so a +2000 lead over 2 games doesn't rank as the easiest lane.
+ */
+export function adjustedLaneLead(m: Pick<MatchupStat, "lane_games" | "gold_diff_15_sum" | "xp_diff_15_sum">, weight = 10): number | null {
+  if (!m.lane_games) return null;
+  return (m.gold_diff_15_sum + m.xp_diff_15_sum) / (m.lane_games + weight);
 }
 
 // ---- Data Dragon ----
