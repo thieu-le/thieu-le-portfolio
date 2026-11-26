@@ -16,7 +16,7 @@ import type { LucideIcon } from "lucide-react";
 import FilterBar from "../components/FilterBar";
 import MatchupList, { type MatchupRow } from "../components/MatchupList";
 import SetupNotice from "../components/SetupNotice";
-import { Rate, signed } from "../components/StatDisplay";
+import { Diff, Rate } from "../components/StatDisplay";
 import {
   adjustedLaneLead,
   getChampionDetail,
@@ -460,8 +460,8 @@ function MatchupPanel({
           <dl className="grid grid-cols-2 gap-2 min-[25rem]:grid-cols-4">
             <Metric label="Game WR" value={<GameRate stat={stats} />} />
             <Metric label="Lane WR" value={<Rate value={laneWinRate(stats)} />} />
-            <Metric label="Gold @15" value={signed(stats.avg_gold_diff_15)} />
-            <Metric label="XP @15" value={signed(stats.avg_xp_diff_15)} />
+            <Metric label="Gold @15" value={<Diff value={stats.avg_gold_diff_15} />} />
+            <Metric label="XP @15" value={<Diff value={stats.avg_xp_diff_15} />} />
           </dl>
           <SkillCard rows={detail.skills} usual={usual.skill} nested />
           <BuildCard rows={detail.builds} dd={dd} usual={usual.build} nested />

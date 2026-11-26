@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, X } from "lucide-react";
-import { Rate, signed } from "./StatDisplay";
+import { Diff, Rate } from "./StatDisplay";
 
 export type MatchupRow = {
   slug: string;
@@ -131,8 +131,8 @@ export default function MatchupList({
                   </td>
                   <td><Rate value={r.winRate} /></td>
                   <td><Rate value={r.laneWinRate} /></td>
-                  <td className="hidden sm:table-cell">{signed(r.goldDiff15)}</td>
-                  <td className="hidden sm:table-cell">{signed(r.xpDiff15)}</td>
+                  <td className="hidden sm:table-cell"><Diff value={r.goldDiff15} /></td>
+                  <td className="hidden sm:table-cell"><Diff value={r.xpDiff15} /></td>
                 </tr>
               );
             })}

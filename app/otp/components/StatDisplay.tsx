@@ -9,3 +9,11 @@ export function signed(value: number | null) {
   if (value === null) return "—";
   return `${value > 0 ? "+" : ""}${value.toLocaleString()}`;
 }
+
+/** A signed gold or XP lead, green when ahead and red when behind. Within ±100 counts as even. */
+export function Diff({ value, even = 100 }: { value: number | null; even?: number }) {
+  if (value === null) return <span className="otp-rate" data-tone="muted">—</span>;
+
+  const tone = value >= even ? "up" : value <= -even ? "down" : undefined;
+  return <span className="otp-rate" data-tone={tone}>{signed(value)}</span>;
+}
