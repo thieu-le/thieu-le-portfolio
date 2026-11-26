@@ -1,9 +1,12 @@
 name: One-trick collector
 
 # Crawls Masters+ one-trick games into Supabase for the /otp pages.
-# This repo is public, so scheduled Actions minutes are free. Runs hourly and
-# stops starting new work after 50 minutes, so runs don't pile up. The regular
-# writes also keep the free Supabase project from auto-pausing.
+# This repo is public, so Actions minutes are free. Each run stops starting new
+# work after 50 minutes, then starts the next run itself, so the collector runs
+# back to back. GitHub's cron is best-effort (often hours late), so it's kept
+# only as a backup that restarts the chain if a run fails.
+# To pause the chain, set the repository variable OTP_CHAIN to "false".
+# The regular writes also keep the free Supabase project from auto-pausing.
 
 on:
   schedule:
@@ -20,6 +23,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write # lets the last step start the next run
 
 jobs:
   collect:
@@ -39,3 +43,12 @@ jobs:
           RIOT_RATE_LIMITS: ${{ vars.RIOT_RATE_LIMITS || '18:1,90:120' }}
           OTP_MAX_RUNTIME_MINUTES: ${{ inputs.max_runtime_minutes || '50' }}
         run: node collector/src/index.ts
+      # Runs started with the built-in token via workflow_dispatch do trigger
+      # workflows. Only after a successful run, so a broken key or schema can't
+      # loop; the hourly schedule picks things back up after a failure. The
+      # concurrency group keeps at most one run going and one waiting.
+      - name: Start next run
+        if: success() && vars.OTP_CHAIN != 'false' && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run otp-collector.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
