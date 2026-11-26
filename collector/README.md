@@ -27,7 +27,7 @@ lanes also run in parallel because they use different hosts:
 4. **Refresh** known one-tricks not checked in 24 hours. Misses are never lost: the next
    check pages through everything since the last one (up to the 14-day raw window).
 5. **Depth**: classify remaining candidates for champions that already have 5 one-tricks.
-6. **Riot IDs** for display, refreshed weekly.
+6. **Riot IDs** for display: fetched as soon as a one-trick is found, and at the start of each run for any missing or over a week old.
 
 Then games older than 14 days are folded into per-patch rollup tables (wins, games, lane
 results per champion, matchup, build, runes and skill max) and deleted, and rollups older

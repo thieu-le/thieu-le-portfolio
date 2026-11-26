@@ -222,6 +222,9 @@ async function classify(platform: Platform, puuid: string, items: ItemCatalog): 
     last_classified_at: classifiedAt,
   });
 
+  // One extra call so the site can show their Riot ID right away.
+  await fetchName(platform, puuid);
+
   const backfillIds = await getSoloMatchIdsSince(platform, puuid, daysAgo(Math.min(config.backfillDays, config.rawDays)));
   const allIds = [...new Set([...ids, ...backfillIds])];
   const stored = await storeMainGames(platform, puuid, main, allIds, items, sample);
@@ -283,25 +286,32 @@ async function refreshOneTricks(platform: Platform, items: ItemCatalog): Promise
   return stored;
 }
 
+async function fetchName(platform: Platform, puuid: string): Promise<void> {
+  try {
+    const acct = await getAccount(platform, puuid);
+    await update('otp_players', { puuid: `eq.${puuid}` }, {
+      game_name: acct.gameName ?? null,
+      tag_line: acct.tagLine ?? null,
+      last_account_check_at: nowIso(),
+    });
+  } catch (err) {
+    if (!(err instanceof RiotNotFound)) throw err;
+  }
+}
+
+/** Riot IDs for known one-tricks: missing ones first, then any older than a week (names can change). */
 async function fillNames(platform: Platform): Promise<void> {
   const players = await select<{ puuid: string }>(
     'otp_players',
     `select=puuid&platform=eq.${platform}&is_one_trick=is.true` +
-      `&or=(last_account_check_at.is.null,last_account_check_at.lt.${daysAgoIso(7)})`,
+      `&or=(last_account_check_at.is.null,last_account_check_at.lt.${daysAgoIso(7)})` +
+      '&order=game_name.nullsfirst',
   );
   for (const { puuid } of players) {
     if (!hasTime()) return;
-    try {
-      const acct = await getAccount(platform, puuid);
-      await update('otp_players', { puuid: `eq.${puuid}` }, {
-        game_name: acct.gameName ?? null,
-        tag_line: acct.tagLine ?? null,
-        last_account_check_at: nowIso(),
-      });
-    } catch (err) {
-      if (!(err instanceof RiotNotFound)) throw err;
-    }
+    await fetchName(platform, puuid);
   }
+  if (players.length) log.info(`[${platform}] refreshed ${players.length} Riot IDs`);
 }
 
 // ---- Main ----
@@ -323,6 +333,10 @@ async function runPlatform(platform: Platform, queue: CoverageQueue, items: Item
 
   const scan = masteryScan(platform, players, queue);
   const regional = (async () => {
+    // Names first: coverage work always fills the rest of the run, so
+    // anything scheduled after it may never get a turn.
+    await fillNames(platform);
+
     const coverage = await classifyFrom(platform, queue, () => queue.nextUncovered(), items, scan);
     log.info(`[${platform}] coverage: classified ${coverage.checked}, found ${coverage.found} one-tricks`);
 
@@ -331,8 +345,6 @@ async function runPlatform(platform: Platform, queue: CoverageQueue, items: Item
 
     const extra = await classifyFrom(platform, queue, () => queue.nextAny(), items);
     log.info(`[${platform}] depth: classified ${extra.checked}, found ${extra.found} one-tricks`);
-
-    await fillNames(platform);
   })();
 
   await Promise.all([scan, regional]);

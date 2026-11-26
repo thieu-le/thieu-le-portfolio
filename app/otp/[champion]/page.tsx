@@ -54,8 +54,8 @@ export async function generateMetadata({ params }: Props) {
   return { title: c ? `${c.name} one-trick builds and matchups | One-Trick Stats` : "One-Trick Stats" };
 }
 
-function GameRate({ stat, min = MIN_WR_GAMES }: { stat: StatRow; min?: number }) {
-  return <Rate value={winRate(stat)} muted={stat.games < min} />;
+function GameRate({ stat }: { stat: StatRow }) {
+  return <Rate value={winRate(stat)} />;
 }
 
 function Sample({ stat }: { stat: StatRow }) {
@@ -405,7 +405,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
                             </th>
                             <td className="capitalize whitespace-nowrap">{p.tier.toLowerCase()} {p.league_points.toLocaleString()} LP</td>
                             <td>{p.games.toLocaleString()}</td>
-                            <td><GameRate stat={p} min={10} /></td>
+                            <td><GameRate stat={p} /></td>
                           </tr>
                         ))}
                       </tbody>
@@ -459,7 +459,7 @@ function MatchupPanel({
           )}
           <dl className="grid grid-cols-2 gap-2 min-[25rem]:grid-cols-4">
             <Metric label="Game WR" value={<GameRate stat={stats} />} />
-            <Metric label="Lane WR" value={<Rate value={laneWinRate(stats)} muted={stats.games < MIN_WR_GAMES} />} />
+            <Metric label="Lane WR" value={<Rate value={laneWinRate(stats)} />} />
             <Metric label="Gold @15" value={signed(stats.avg_gold_diff_15)} />
             <Metric label="XP @15" value={signed(stats.avg_xp_diff_15)} />
           </dl>

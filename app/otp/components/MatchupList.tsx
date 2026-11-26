@@ -129,8 +129,8 @@ export default function MatchupList({
                     {r.games.toLocaleString()}
                     {smallSample && <span title="Small sample">*</span>}
                   </td>
-                  <td><Rate value={r.winRate} muted={smallSample} /></td>
-                  <td><Rate value={r.laneWinRate} muted={smallSample} /></td>
+                  <td><Rate value={r.winRate} /></td>
+                  <td><Rate value={r.laneWinRate} /></td>
                   <td className="hidden sm:table-cell">{signed(r.goldDiff15)}</td>
                   <td className="hidden sm:table-cell">{signed(r.xpDiff15)}</td>
                 </tr>
@@ -151,7 +151,7 @@ export default function MatchupList({
         </table>
       </div>
       <p className="border-t border-[var(--otp-line)] px-4 py-3 text-xs leading-relaxed text-[var(--otp-muted)]">
-        * Under {minGames} games, win rates are muted. Hardest and easiest sort by the combined gold and XP
+        * Under {minGames} games, a small sample. Hardest and easiest sort by the combined gold and XP
         lead at 15 minutes, pulled toward even for small samples. A lead in both counts as a lane win; mixed leads count as half.
       </p>
     </div>
