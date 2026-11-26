@@ -28,6 +28,13 @@ lanes also run in parallel because they use different hosts:
    check pages through everything since the last one (up to the 14-day raw window).
 5. **Depth**: classify remaining candidates for champions that already have 5 one-tricks.
 6. **Riot IDs** for display: fetched as soon as a one-trick is found, and at the start of each run for any missing or over a week old.
+7. **Win probability backfill**: once everything above is done, refetch timelines for raw
+   games stored without game-state snapshots (see [docs/WPA.md](../docs/WPA.md)).
+
+Every stored game also gets two game-state snapshots (when the first core item was finished,
+and at 15:00), and each match adds one training snapshot for the win probability model. The
+model is retrained at most daily at the end of a run; the site uses it for build and lane
+**WPA** (win probability added). Details: [docs/WPA.md](../docs/WPA.md).
 
 Then games older than 14 days are folded into per-patch rollup tables (wins, games, lane
 results per champion, matchup, build, runes and skill max) and deleted, and rollups older
@@ -78,3 +85,6 @@ npm run otp:collect
 | `OTP_RAW_DAYS` | `14` | Per-game rows kept this long, then folded into per-patch rollups |
 | `OTP_KEEP_PATCHES` | `6` | Patches of rolled-up history to keep (about 3 months) |
 | `OTP_MAX_RUNTIME_MINUTES` | `50` | Stop starting new work after this long |
+| `OTP_WP_SAMPLE_CAP` | `150000` | Win probability training snapshots kept (newest) |
+| `OTP_WP_MIN_SAMPLES` | `5000` | Snapshots needed before the first model is trained |
+| `OTP_WP_RETRAIN_HOURS` | `24` | Minimum gap between model retrains |

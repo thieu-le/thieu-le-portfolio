@@ -116,6 +116,14 @@ export type TimelineEvent = {
   afterId?: number;
   skillSlot?: number;
   levelUpType?: string;
+  // Kills, buildings and monsters, for the win probability state (winprob.ts).
+  killerId?: number;
+  victimId?: number;
+  teamId?: number;
+  killerTeamId?: number;
+  buildingType?: string;
+  monsterType?: string;
+  monsterSubType?: string;
 };
 
 export type ParticipantFrame = { totalGold: number; xp: number };
@@ -123,7 +131,7 @@ export type ParticipantFrame = { totalGold: number; xp: number };
 export type Timeline = {
   info: {
     // One frame per minute; frames[15] is the 15:00 snapshot.
-    frames: { events: TimelineEvent[]; participantFrames?: Record<string, ParticipantFrame> }[];
+    frames: { timestamp: number; events: TimelineEvent[]; participantFrames?: Record<string, ParticipantFrame> }[];
   };
 };
 

@@ -32,6 +32,9 @@ export type GameRow = {
   perks: number[];
   stat_perks: number[];
   summoner_spells: number[];
+  /** Win probability states (winprob.ts): when the first core item is finished, and at 15:00. */
+  state_core: number[] | null;
+  state_15: number[] | null;
 };
 
 /** "15.23.712.3456" -> "15.23" */
@@ -65,6 +68,8 @@ type TimelineDerived = {
   xp_diff_10: number | null;
   gold_diff_15: number | null;
   xp_diff_15: number | null;
+  /** When the first core item was bought, in ms from game start. */
+  core_at_ms: number | null;
 };
 
 /** Player minus lane opponent at `minute`, or nulls when either frame is missing. */
@@ -83,6 +88,7 @@ export function fromTimeline(
   opponentId?: number,
 ): TimelineDerived {
   const purchases: number[] = [];
+  const purchasedAt: number[] = [];
   const skills: string[] = [];
 
   for (const frame of timeline.info.frames) {
@@ -90,10 +96,14 @@ export function fromTimeline(
       if (e.participantId !== participantId) continue;
       if (e.type === 'ITEM_PURCHASED' && e.itemId) {
         purchases.push(e.itemId);
+        purchasedAt.push(e.timestamp);
       } else if (e.type === 'ITEM_UNDO' && e.beforeId) {
         // Undo of a purchase: drop the most recent buy of that item.
         const i = purchases.lastIndexOf(e.beforeId);
-        if (i !== -1) purchases.splice(i, 1);
+        if (i !== -1) {
+          purchases.splice(i, 1);
+          purchasedAt.splice(i, 1);
+        }
       } else if (e.type === 'SKILL_LEVEL_UP' && e.levelUpType === 'NORMAL' && e.skillSlot) {
         skills.push(SLOT[e.skillSlot] ?? '?');
       }
@@ -101,10 +111,12 @@ export function fromTimeline(
   }
 
   const core: number[] = [];
-  for (const id of purchases) {
-    if (items.isCompleted(id) && !items.isBoots(id) && !core.includes(id)) core.push(id);
-    if (core.length === 3) break;
-  }
+  let coreAt: number | null = null;
+  purchases.forEach((id, i) => {
+    if (core.length === 3 || !items.isCompleted(id) || items.isBoots(id) || core.includes(id)) return;
+    if (!core.length) coreAt = purchasedAt[i];
+    core.push(id);
+  });
 
   const at10 = laneDiff(timeline, 10, participantId, opponentId);
   const at15 = laneDiff(timeline, 15, participantId, opponentId);
@@ -117,6 +129,7 @@ export function fromTimeline(
     xp_diff_10: at10.xp,
     gold_diff_15: at15.gold,
     xp_diff_15: at15.xp,
+    core_at_ms: core.length === 3 ? coreAt : null,
   };
 }
 
@@ -141,6 +154,7 @@ export function toGameRow(
   p: MatchParticipant,
   platform: string,
   derived: TimelineDerived | null,
+  states: { core: number[] | null; at15: number[] | null } = { core: null, at15: null },
 ): GameRow {
   const [primary, sub] = p.perks.styles;
   return {
@@ -172,5 +186,7 @@ export function toGameRow(
     perks: [...(primary?.selections ?? []), ...(sub?.selections ?? [])].map((s) => s.perk),
     stat_perks: [p.perks.statPerks.offense, p.perks.statPerks.flex, p.perks.statPerks.defense],
     summoner_spells: [p.summoner1Id, p.summoner2Id],
+    state_core: states.core,
+    state_15: states.at15,
   };
 }

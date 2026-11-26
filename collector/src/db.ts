@@ -15,14 +15,17 @@ async function check(res: Response, what: string): Promise<void> {
 }
 
 /** Insert or update rows, matching on the table's primary key (or `onConflict`). */
-export async function upsert(table: string, rows: object[], onConflict?: string): Promise<void> {
+export async function upsert(table: string, rows: object[], onConflict?: string, ignoreDuplicates = false): Promise<void> {
   if (!rows.length) return;
   const url = new URL(`${base}/${table}`);
   if (onConflict) url.searchParams.set('on_conflict', onConflict);
   for (let i = 0; i < rows.length; i += 500) {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: {
+        ...headers,
+        Prefer: `resolution=${ignoreDuplicates ? 'ignore' : 'merge'}-duplicates,return=minimal`,
+      },
       body: JSON.stringify(rows.slice(i, i + 500)),
     });
     await check(res, `upsert ${table}`);

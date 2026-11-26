@@ -23,6 +23,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { config, type Platform } from './config.ts';
 import { CoverageQueue } from './coverage.ts';
 import { rpc, select, update, upsert } from './db.ts';
+import { teamsOf, teamState, trainingSample, type Sample } from './winprob.ts';
+import { trainWinModel } from './train.ts';
 import { loadItemCatalog, type ItemCatalog } from './dataDragon.ts';
 import { findLaneOpponent, findParticipant, fromTimeline, isRemake, toGameRow, type GameRow } from './extract.ts';
 import { log } from './log.ts';
@@ -37,6 +39,8 @@ import {
   requestStats,
   RiotNotFound,
   type Match,
+  type MatchParticipant,
+  type Timeline,
 } from './riot.ts';
 
 const startedAt = Date.now();
@@ -72,6 +76,30 @@ async function fetchMatch(platform: Platform, matchId: string): Promise<Match | 
   }
 }
 
+// Win probability training snapshots, one per match, written alongside games.
+const samples = new Map<string, Sample>();
+
+async function flushSamples(): Promise<void> {
+  if (!samples.size) return;
+  const rows = [...samples.values()];
+  samples.clear();
+  await upsert('otp_wp_samples', rows, 'match_id', true);
+}
+
+/** Timeline-derived fields for one player, plus the match's training snapshot. */
+function fromMatchTimeline(match: Match, p: MatchParticipant, timeline: Timeline, items: ItemCatalog) {
+  const opponent = findLaneOpponent(match, p);
+  const derived = fromTimeline(timeline, p.participantId, items, opponent?.participantId);
+  const teams = teamsOf(match);
+  const states = {
+    core: derived.core_at_ms !== null ? teamState(timeline, teams, derived.core_at_ms, p.teamId) : null,
+    at15: timeline.info.frames.length > 15 ? teamState(timeline, teams, 15 * 60_000, p.teamId) : null,
+  };
+  const sample = trainingSample(match, timeline);
+  if (sample) samples.set(sample.match_id, sample);
+  return { derived, states };
+}
+
 async function buildRow(platform: Platform, match: Match, puuid: string, items: ItemCatalog): Promise<GameRow | null> {
   const p = findParticipant(match, puuid);
   if (!p || isRemake(match, p)) return null;
@@ -79,16 +107,15 @@ async function buildRow(platform: Platform, match: Match, puuid: string, items: 
   if (match.info.gameStartTimestamp < daysAgo(config.rawDays).getTime()) {
     return null;
   }
-  let derived = null;
   if (config.fetchTimelines) {
     try {
-      const opponent = findLaneOpponent(match, p);
-      derived = fromTimeline(await getTimeline(platform, match.metadata.matchId), p.participantId, items, opponent?.participantId);
+      const { derived, states } = fromMatchTimeline(match, p, await getTimeline(platform, match.metadata.matchId), items);
+      return toGameRow(match, p, platform, derived, states);
     } catch (err) {
       if (!(err instanceof RiotNotFound)) throw err;
     }
   }
-  return toGameRow(match, p, platform, derived);
+  return toGameRow(match, p, platform, null);
 }
 
 /** Fetch these matches and store the ones played on `champion`. Returns rows stored. */
@@ -112,9 +139,11 @@ async function storeMainGames(
     if (rows.length >= 25) {
       stored += rows.length;
       await upsert('otp_games', rows.splice(0));
+      await flushSamples();
     }
   }
   await upsert('otp_games', rows);
+  await flushSamples();
   return stored + rows.length;
 }
 
@@ -314,6 +343,47 @@ async function fillNames(platform: Platform): Promise<void> {
   if (players.length) log.info(`[${platform}] refreshed ${players.length} Riot IDs`);
 }
 
+/**
+ * Games stored before win probability snapshots existed (or whose timeline
+ * failed) get them here, newest first. Lowest priority: runs only once
+ * coverage, refresh and depth are done. Games shorter than 16 minutes have no
+ * 15:00 state and are skipped; an empty array marks "timeline unavailable".
+ */
+async function backfillStates(platform: Platform, items: ItemCatalog): Promise<number> {
+  if (!config.fetchTimelines || !hasTime()) return 0;
+  const rows = await select<{ match_id: string; puuid: string }>(
+    'otp_games',
+    `select=match_id,puuid&platform=eq.${platform}&state_15=is.null&game_duration=gte.960` +
+      '&order=game_start.desc&limit=1000',
+  );
+  const byMatch = new Map<string, string[]>();
+  for (const r of rows) byMatch.set(r.match_id, [...(byMatch.get(r.match_id) ?? []), r.puuid]);
+
+  let filled = 0;
+  for (const [matchId, puuids] of byMatch) {
+    if (!hasTime()) break;
+    const match = await fetchMatch(platform, matchId);
+    let timeline: Timeline | null = null;
+    try {
+      if (match) timeline = await getTimeline(platform, matchId);
+    } catch (err) {
+      if (!(err instanceof RiotNotFound)) throw err;
+    }
+    for (const puuid of puuids) {
+      const p = match && findParticipant(match, puuid);
+      const patch = match && p && timeline ? fromMatchTimeline(match, p, timeline, items).states : { core: null, at15: [] };
+      await update('otp_games', { match_id: `eq.${matchId}`, puuid: `eq.${puuid}` }, {
+        state_core: patch.core,
+        state_15: patch.at15 ?? [],
+      });
+      filled++;
+    }
+    if (samples.size >= 25) await flushSamples();
+  }
+  await flushSamples();
+  return filled;
+}
+
 // ---- Main ----
 
 async function runPlatform(platform: Platform, queue: CoverageQueue, items: ItemCatalog): Promise<void> {
@@ -345,6 +415,9 @@ async function runPlatform(platform: Platform, queue: CoverageQueue, items: Item
 
     const extra = await classifyFrom(platform, queue, () => queue.nextAny(), items);
     log.info(`[${platform}] depth: classified ${extra.checked}, found ${extra.found} one-tricks`);
+
+    const backfilled = await backfillStates(platform, items);
+    if (backfilled) log.info(`[${platform}] backfilled win probability states for ${backfilled} games`);
   })();
 
   await Promise.all([scan, regional]);
@@ -368,12 +441,21 @@ async function main(): Promise<void> {
     if (r.status === 'rejected') log.error(`[${config.platforms[i]}] ${(r.reason as Error)?.stack ?? r.reason}`);
   });
 
+  // Retrain the win probability model (daily) before rollups use it.
+  try {
+    await trainWinModel();
+  } catch (err) {
+    log.error(`Win probability training failed: ${(err as Error).stack ?? err}`);
+  }
+
   // Fold games older than the raw window into the per-patch rollups.
   const rolled = await rpc<number>('otp_rollup_games', {
     cutoff: daysAgoIso(config.rawDays),
     keep_patches: config.keepPatches,
   });
   log.info(`Rolled up ${rolled} games older than ${config.rawDays} days`);
+  const pruned = await rpc<number>('otp_prune_wp_samples', { keep: config.wpSampleCap });
+  if (pruned) log.info(`Pruned ${pruned} old win probability samples`);
 
   const covered = [...counts.values()].filter((n) => n >= config.championTarget).length;
   const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1);

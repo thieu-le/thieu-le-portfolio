@@ -17,3 +17,15 @@ export function Diff({ value, even = 100 }: { value: number | null; even?: numbe
   const tone = value >= even ? "up" : value <= -even ? "down" : undefined;
   return <span className="otp-rate" data-tone={tone}>{signed(value)}</span>;
 }
+
+/** Win probability added, in percentage points; within ±1 counts as neutral. */
+export function Wpa({ value, small, title }: { value: number | null; small?: boolean; title?: string }) {
+  if (value === null) return <span className="otp-rate" data-tone="muted">—</span>;
+
+  const tone = value >= 1 ? "up" : value <= -1 ? "down" : undefined;
+  return (
+    <span className="otp-rate" data-tone={tone} title={title}>
+      {value > 0 ? "+" : ""}{value.toFixed(1)}%{small && <span title="Small sample">*</span>}
+    </span>
+  );
+}

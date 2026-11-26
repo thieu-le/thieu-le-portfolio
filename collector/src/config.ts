@@ -100,6 +100,12 @@ export const config = Object.freeze({
   rawDays: num('OTP_RAW_DAYS', 14),
   keepPatches: num('OTP_KEEP_PATCHES', 6),
 
+  // Win probability model (see docs/WPA.md). One training snapshot per match,
+  // capped so the table stays small; retrained at most once per WP_RETRAIN_HOURS.
+  wpSampleCap: num('OTP_WP_SAMPLE_CAP', 150_000),
+  wpMinSamples: num('OTP_WP_MIN_SAMPLES', 5_000),
+  wpRetrainHours: num('OTP_WP_RETRAIN_HOURS', 24),
+
   // Stop starting new work after this long so a scheduled run never overlaps
   // the next one. In-flight requests still finish.
   maxRuntimeMinutes: num('OTP_MAX_RUNTIME_MINUTES', 50),

@@ -16,9 +16,16 @@ import type { LucideIcon } from "lucide-react";
 import FilterBar from "../components/FilterBar";
 import MatchupList, { type MatchupRow } from "../components/MatchupList";
 import SetupNotice from "../components/SetupNotice";
-import { Diff, Rate } from "../components/StatDisplay";
+import { Diff, Rate, Wpa } from "../components/StatDisplay";
 import {
   adjustedLaneLead,
+  adjustedLaneWpa,
+  getWinModel,
+  laneWpa,
+  MIN_WPA_GAMES,
+  wpa,
+  wpAtPurchase,
+  type WinModel,
   getChampionDetail,
   getChampionSummary,
   getMatchupDetail,
@@ -58,13 +65,60 @@ function GameRate({ stat }: { stat: StatRow }) {
   return <Rate value={winRate(stat)} />;
 }
 
-function Sample({ stat }: { stat: StatRow }) {
+function Sample({ stat, children }: { stat: StatRow; children?: React.ReactNode }) {
   return (
     <div className="otp-sample">
       <span className="sr-only">Win rate</span>
       <GameRate stat={stat} />
       <span>{stat.games.toLocaleString()} {stat.games === 1 ? "game" : "games"}</span>
+      {children}
     </div>
+  );
+}
+
+/** A build's WPA under its win rate; nothing until games have snapshots. */
+function BuildWpa({ stat }: { stat: BuildStat }) {
+  const value = wpa(stat);
+  if (value === null || !stat.wp_games) return null;
+  const atBuy = wpAtPurchase(stat) ?? 50;
+  const context = atBuy >= 53 ? "usually bought ahead" : atBuy <= 47 ? "usually bought behind" : "usually bought even";
+  return (
+    <span className="otp-wpa" title={`Bought at a ${atBuy.toFixed(0)}% win chance on average (${context}), over ${stat.wp_games.toLocaleString()} games`}>
+      <Wpa value={value} small={stat.wp_games < MIN_WPA_GAMES} /> WPA
+    </span>
+  );
+}
+
+/** What WPA means, with the current model's quality. */
+function WpaNote({ model }: { model: WinModel | null }) {
+  return (
+    <details className="otp-panel otp-wpa-note">
+      <summary>What does WPA mean? <ChevronDown size={16} aria-hidden /></summary>
+      <div className="mt-2 space-y-2">
+        <p>
+          <strong>WPA (win probability added)</strong> shows how much a build changes the odds of winning, compared with
+          where the game stood when it was bought. When a one-trick finishes their first core item, a model estimates
+          their team&apos;s chance to win from the gold, XP, kills, towers and objectives on the board. WPA is the average
+          result (a win counts as 100%, a loss as 0%) minus that estimate.
+        </p>
+        <p>
+          <strong>+2% WPA</strong> means games with that build were won 2 points more often than games in the same
+          position usually are. Raw win rate can&apos;t show this: an item people buy while already ahead wins a lot even if
+          it isn&apos;t helping. Hover a WPA value to see the average win chance when the build was bought. Values marked *
+          come from under {MIN_WPA_GAMES} games and swing a lot.
+        </p>
+        <p>
+          <strong>Lane WPA</strong> in the matchup table is the estimated win chance at 15:00 minus 50%: how far the
+          laning phase moved the game, counting gold, XP, kills, plates, dragons and grubs together.
+        </p>
+        <p className="text-[var(--otp-muted)]">
+          {model
+            ? `Model: logistic regression on ${model.samples.toLocaleString()} Masters+ games, ${model.accuracy !== null ? `${(100 * model.accuracy).toFixed(1)}% accurate` : ""}${model.ece !== null ? `, ${(100 * model.ece).toFixed(1)}% calibration error` : ""} on held-out games, retrained daily.`
+            : "WPA appears once the win probability model has trained on enough games."}{" "}
+          Method adapted from xPetu&apos;s thesis, <em>Win probability estimation for strategic decision-making in esports</em> (2024).
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -172,12 +226,12 @@ function BuildCard({ rows, dd, usual, nested }: { rows: BuildStat[]; dd: StaticD
     <Card title="Core build" icon={Swords} differs={differs} nested={nested}>
       {top ? (
         <>
-          <div className="flex items-center justify-between gap-2"><ItemChain ids={top.core_items} dd={dd} size={34} /><Sample stat={top} /></div>
+          <div className="flex items-center justify-between gap-2"><ItemChain ids={top.core_items} dd={dd} size={34} /><Sample stat={top}><BuildWpa stat={top} /></Sample></div>
           <p className="otp-recommendation mt-2">{top.core_items.map(dd.itemName).join(" › ")}</p>
           <Alternatives count={rest.length}>
             {rest.map((b) => (
               <li key={b.core_items.join("-")} className="flex items-center justify-between gap-2">
-                <ItemChain ids={b.core_items} dd={dd} size={28} /><Sample stat={b} />
+                <ItemChain ids={b.core_items} dd={dd} size={28} /><Sample stat={b}><BuildWpa stat={b} /></Sample>
               </li>
             ))}
           </Alternatives>
@@ -249,9 +303,10 @@ export default async function ChampionPage({ params, searchParams }: Props) {
   const oneTricks = summary.oneTricks.filter((o) => platforms.includes(o.platform)).reduce((n, o) => n + o.one_tricks, 0);
   const regionLabel = REGIONS.filter((r) => platforms.includes(r.platform)).map((r) => r.label).join(" · ");
 
-  const [{ builds, boots, runes, skills, players }, matchups] = await Promise.all([
+  const [{ builds, boots, runes, skills, players }, matchups, winModel] = await Promise.all([
     getChampionDetail(championId, platforms, position),
     getMatchups(championId, platforms, position),
+    getWinModel(),
   ]);
 
   const vs = typeof query.vs === "string" ? query.vs : undefined;
@@ -272,6 +327,8 @@ export default async function ChampionPage({ params, searchParams }: Props) {
       laneLead: adjustedLaneLead(m),
       goldDiff15: m.avg_gold_diff_15,
       xpDiff15: m.avg_xp_diff_15,
+      laneWpa: laneWpa(m),
+      laneWpaSort: adjustedLaneWpa(m),
     }];
   });
 
@@ -325,6 +382,7 @@ export default async function ChampionPage({ params, searchParams }: Props) {
               <BuildCard rows={builds} dd={dd} />
               <RuneCard rows={runes} dd={dd} />
             </div>
+            <WpaNote model={winModel} />
           </section>
 
           <section id="matchup" className="otp-section" aria-labelledby="matchup-title">
@@ -457,9 +515,10 @@ function MatchupPanel({
               Small sample · under {MIN_WR_GAMES} games
             </p>
           )}
-          <dl className="grid grid-cols-2 gap-2 min-[25rem]:grid-cols-4">
+          <dl className={`grid grid-cols-2 gap-2 ${stats.wp15_games ? "min-[25rem]:grid-cols-3" : "min-[25rem]:grid-cols-4"}`}>
             <Metric label="Game WR" value={<GameRate stat={stats} />} />
             <Metric label="Lane WR" value={<Rate value={laneWinRate(stats)} />} />
+            {stats.wp15_games > 0 && <Metric label="Lane WPA" value={<Wpa value={laneWpa(stats)} />} />}
             <Metric label="Gold @15" value={<Diff value={stats.avg_gold_diff_15} />} />
             <Metric label="XP @15" value={<Diff value={stats.avg_xp_diff_15} />} />
           </dl>

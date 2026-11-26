@@ -374,6 +374,29 @@
 }
 
 .otp-sample .otp-rate { font-size: .9rem; }
+.otp-sample .otp-wpa { cursor: help; white-space: nowrap; }
+.otp-sample .otp-wpa .otp-rate { font-size: .75rem; }
+
+.otp-wpa-note {
+  margin-top: .75rem;
+  padding: .8rem 1rem;
+  font-size: .8rem;
+  line-height: 1.55;
+}
+.otp-wpa-note summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  list-style: none;
+  cursor: pointer;
+  color: var(--otp-muted);
+  font-weight: 500;
+}
+.otp-wpa-note summary::-webkit-details-marker { display: none; }
+.otp-wpa-note summary:hover { color: var(--otp-accent); }
+.otp-wpa-note[open] summary svg { transform: rotate(180deg); }
+.otp-wpa-note p { max-width: 72ch; }
 
 .otp-skill {
   display: inline-grid;

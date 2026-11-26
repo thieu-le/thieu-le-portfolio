@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, X } from "lucide-react";
-import { Diff, Rate } from "./StatDisplay";
+import { Diff, Rate, Wpa } from "./StatDisplay";
 
 export type MatchupRow = {
   slug: string;
@@ -17,6 +17,9 @@ export type MatchupRow = {
   laneLead: number | null;
   goldDiff15: number | null;
   xpDiff15: number | null;
+  /** Win probability at 15:00 minus 50%, and the same shrunk toward 0 for sorting. */
+  laneWpa: number | null;
+  laneWpaSort: number | null;
 };
 
 type Sort = "games" | "hardest" | "easiest";
@@ -46,6 +49,7 @@ export default function MatchupList({
   baseHref: string;
   minGames: number;
 }) {
+  const hasWpa = rows.some((r) => r.laneWpa !== null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("games");
   const pendingMobileMatchup = useRef<string | null>(null);
@@ -61,13 +65,17 @@ export default function MatchupList({
     const q = query.trim().toLowerCase();
     const list = rows.filter((r) => r.name.toLowerCase().includes(q));
     if (sort === "games") return list.sort((a, b) => b.games - a.games);
-    // Hardest = biggest gold + XP deficit at 15:00. Matchups without lane data go last.
+    // Hardest = lowest win probability at 15:00 once the model exists, else the
+    // biggest gold + XP deficit. Matchups without lane data go last.
     const dir = sort === "hardest" ? 1 : -1;
+    const key = (r: MatchupRow) => (hasWpa ? r.laneWpaSort : r.laneLead);
     return list.sort((a, b) => {
-      if (a.laneLead === null || b.laneLead === null) return (a.laneLead === null ? 1 : 0) - (b.laneLead === null ? 1 : 0);
-      return dir * (a.laneLead - b.laneLead) || b.games - a.games;
+      const ka = key(a);
+      const kb = key(b);
+      if (ka === null || kb === null) return (ka === null ? 1 : 0) - (kb === null ? 1 : 0);
+      return dir * (ka - kb) || b.games - a.games;
     });
-  }, [rows, query, sort]);
+  }, [rows, query, sort, hasWpa]);
 
   return (
     <div className="otp-panel overflow-hidden">
@@ -94,6 +102,7 @@ export default function MatchupList({
               <th scope="col">Games</th>
               <th scope="col">Game WR</th>
               <th scope="col">Lane WR</th>
+              {hasWpa && <th scope="col"><abbr title="Win probability at 15:00 minus 50%">Lane WPA</abbr></th>}
               <th scope="col" className="hidden sm:table-cell">Gold @15</th>
               <th scope="col" className="hidden sm:table-cell">XP @15</th>
             </tr>
@@ -131,6 +140,7 @@ export default function MatchupList({
                   </td>
                   <td><Rate value={r.winRate} /></td>
                   <td><Rate value={r.laneWinRate} /></td>
+                  {hasWpa && <td><Wpa value={r.laneWpa} /></td>}
                   <td className="hidden sm:table-cell"><Diff value={r.goldDiff15} /></td>
                   <td className="hidden sm:table-cell"><Diff value={r.xpDiff15} /></td>
                 </tr>
@@ -138,7 +148,7 @@ export default function MatchupList({
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={hasWpa ? 7 : 6}>
                   <div className="otp-empty">
                     <Search size={21} aria-hidden />
                     <p>No matching opponents</p>
@@ -151,8 +161,10 @@ export default function MatchupList({
         </table>
       </div>
       <p className="border-t border-[var(--otp-line)] px-4 py-3 text-xs leading-relaxed text-[var(--otp-muted)]">
-        * Under {minGames} games, a small sample. Hardest and easiest sort by the combined gold and XP
-        lead at 15 minutes, pulled toward even for small samples. A lead in both counts as a lane win; mixed leads count as half.
+        * Under {minGames} games, a small sample. A gold and XP lead at 15 minutes counts as a lane win; mixed leads count as half.{" "}
+        {hasWpa
+          ? "Lane WPA is the team's estimated chance to win at 15:00 minus 50%: how far the laning phase moved the game. Hardest and easiest sort by it, pulled toward even for small samples."
+          : "Hardest and easiest sort by the combined gold and XP lead at 15 minutes, pulled toward even for small samples."}
       </p>
     </div>
   );

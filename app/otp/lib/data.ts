@@ -10,7 +10,13 @@ export type StatRow = { games: number; wins: number };
 /** One row per champion x region x lane. */
 export type ChampionStat = StatRow & { champion_id: number; platform: string; position: string; latest_patch: string };
 export type OneTrickCount = { champion_id: number; platform: string; one_tricks: number };
-export type BuildStat = StatRow & { core_items: number[] };
+/**
+ * Win probability sums for WPA (see docs/WPA.md): games with a game-state
+ * snapshot when the first core item was finished, their wins, and the summed
+ * win probability at that moment.
+ */
+export type WpSums = { wp_games: number; wp_wins: number; wp_sum: number };
+export type BuildStat = StatRow & Partial<WpSums> & { core_items: number[] };
 export type BootsStat = StatRow & { boots: number };
 export type RuneStat = StatRow & { keystone: number; primary_style: number; sub_style: number; perks: number[] };
 export type SkillStat = StatRow & { skill_max: string };
@@ -56,14 +62,18 @@ async function viewAll<T>(name: string, query: string): Promise<T[]> {
 }
 
 /** Sums rows that share a key (the same build across regions), most games first. */
+const SUMMED = ["games", "wins", "wp_games", "wp_wins", "wp_sum"] as const;
+
 export function merge<T extends StatRow>(rows: T[], key: (r: T) => string, limit = Infinity): T[] {
   const byKey = new Map<string, T>();
   for (const r of rows) {
     const k = key(r);
-    const seen = byKey.get(k);
+    const seen = byKey.get(k) as Record<string, unknown> | undefined;
     if (seen) {
-      seen.games += r.games;
-      seen.wins += r.wins;
+      for (const f of SUMMED) {
+        const v = (r as Record<string, unknown>)[f];
+        if (typeof v === "number") seen[f] = ((seen[f] as number | undefined) ?? 0) + v;
+      }
     } else {
       byKey.set(k, { ...r });
     }
@@ -96,7 +106,7 @@ export async function getChampionSummary(championId: number) {
 export async function getChampionDetail(championId: number, platforms: string[], position: string) {
   const c = scope(championId, platforms, position);
   const [builds, boots, runes, skills, players] = await Promise.all([
-    view<BuildStat>("otp_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=300`),
+    view<BuildStat>("otp_build_stats", `select=core_items,games,wins,wp_games,wp_wins,wp_sum&${c}&order=games.desc&limit=300`),
     view<BootsStat>("otp_boots_stats", `select=boots,games,wins&${c}&order=games.desc&limit=60`),
     view<RuneStat>("otp_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=300`),
     view<SkillStat>("otp_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=60`),
@@ -118,6 +128,9 @@ export type MatchupStat = StatRow & {
   lane_losses: number;
   gold_diff_15_sum: number;
   xp_diff_15_sum: number;
+  /** Games with a 15:00 game state, and their summed win probability then. */
+  wp15_games: number;
+  wp15_sum: number;
   /** Average leads at 15:00 over games with lane data. */
   avg_gold_diff_15: number | null;
   avg_xp_diff_15: number | null;
@@ -129,7 +142,13 @@ export async function getMatchups(championId: number, platforms: string[], posit
   for (const r of rows) {
     const m = byOpponent.get(r.opponent_champion_id);
     if (!m) {
-      byOpponent.set(r.opponent_champion_id, { ...r, gold_diff_15_sum: Number(r.gold_diff_15_sum), xp_diff_15_sum: Number(r.xp_diff_15_sum) });
+      byOpponent.set(r.opponent_champion_id, {
+        ...r,
+        gold_diff_15_sum: Number(r.gold_diff_15_sum),
+        xp_diff_15_sum: Number(r.xp_diff_15_sum),
+        wp15_games: r.wp15_games ?? 0,
+        wp15_sum: r.wp15_sum ?? 0,
+      });
       continue;
     }
     m.games += r.games;
@@ -139,6 +158,8 @@ export async function getMatchups(championId: number, platforms: string[], posit
     m.lane_losses += r.lane_losses;
     m.gold_diff_15_sum += Number(r.gold_diff_15_sum);
     m.xp_diff_15_sum += Number(r.xp_diff_15_sum);
+    m.wp15_games += r.wp15_games ?? 0;
+    m.wp15_sum += r.wp15_sum ?? 0;
   }
   return [...byOpponent.values()]
     .map((m) => ({
@@ -152,7 +173,7 @@ export async function getMatchups(championId: number, platforms: string[], posit
 export async function getMatchupDetail(championId: number, opponentId: number, platforms: string[], position: string) {
   const c = `${scope(championId, platforms, position)}&opponent_champion_id=eq.${opponentId}`;
   const [builds, runes, skills] = await Promise.all([
-    view<BuildStat>("otp_matchup_build_stats", `select=core_items,games,wins&${c}&order=games.desc&limit=200`),
+    view<BuildStat>("otp_matchup_build_stats", `select=core_items,games,wins,wp_games,wp_wins,wp_sum&${c}&order=games.desc&limit=200`),
     view<RuneStat>("otp_matchup_rune_stats", `select=keystone,primary_style,sub_style,perks,games,wins&${c}&order=games.desc&limit=200`),
     view<SkillStat>("otp_matchup_skill_stats", `select=skill_max,games,wins&${c}&order=games.desc&limit=60`),
   ]);
@@ -191,6 +212,47 @@ export function adjustedWinRate(s: StatRow, baseline: number, weight = MIN_WR_GA
 export function adjustedLaneLead(m: Pick<MatchupStat, "lane_games" | "gold_diff_15_sum" | "xp_diff_15_sum">, weight = 10): number | null {
   if (!m.lane_games) return null;
   return (m.gold_diff_15_sum + m.xp_diff_15_sum) / (m.lane_games + weight);
+}
+
+// ---- Win probability added (docs/WPA.md) ----
+
+/** Below this many games with a game state, WPA is marked as a small sample. */
+export const MIN_WPA_GAMES = 20;
+
+/**
+ * Win probability added, in percentage points per game: wins minus the win
+ * probability the model gave when the first core item was finished. Null
+ * without snapshots.
+ */
+export function wpa(s: Partial<WpSums>): number | null {
+  if (!s.wp_games) return null;
+  return (100 * ((s.wp_wins ?? 0) - (s.wp_sum ?? 0))) / s.wp_games;
+}
+
+/** Average win probability when the first core item was finished, in percent. */
+export function wpAtPurchase(s: Partial<WpSums>): number | null {
+  if (!s.wp_games) return null;
+  return (100 * (s.wp_sum ?? 0)) / s.wp_games;
+}
+
+/** Win probability at 15:00 minus 50%: how much the laning phase moved the game. */
+export function laneWpa(m: Pick<MatchupStat, "wp15_games" | "wp15_sum">): number | null {
+  if (!m.wp15_games) return null;
+  return 100 * (m.wp15_sum / m.wp15_games - 0.5);
+}
+
+/** laneWpa pulled toward 0 by `weight` phantom even games, for sorting. */
+export function adjustedLaneWpa(m: Pick<MatchupStat, "wp15_games" | "wp15_sum">, weight = 10): number | null {
+  if (!m.wp15_games) return null;
+  return (100 * (m.wp15_sum - 0.5 * m.wp15_games)) / (m.wp15_games + weight);
+}
+
+export type WinModel = { trained_at: string; samples: number; accuracy: number | null; ece: number | null };
+
+/** The newest win probability model's stats, or null before the first training. */
+export async function getWinModel(): Promise<WinModel | null> {
+  const [model] = await view<WinModel>("otp_wp_model", "select=trained_at,samples,accuracy,ece&order=trained_at.desc&limit=1");
+  return model ?? null;
 }
 
 // ---- Data Dragon ----
